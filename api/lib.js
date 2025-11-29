@@ -1,4 +1,3 @@
-// api/lib.js
 const fetch = require("node-fetch");
 
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
@@ -36,40 +35,121 @@ async function upstashDel(key) {
   });
 }
 
+// KV cache & debounce flushing to reduce Upstash requests
+const KV_CACHE_TTL = Number(process.env.KV_CACHE_TTL_SECONDS) || 60; // seconds
+const KV_FLUSH_DEBOUNCE_MS = Number(process.env.KV_FLUSH_DEBOUNCE_MS) || 5000; // flush writes after this delay
+const KV_PERIODIC_FLUSH_MS = Number(process.env.KV_PERIODIC_FLUSH_MS) || 30000; // periodic flush interval
+
+// In-memory cache structure: { [key]: { value, ts, dirty, timer } }
+if (!global._kvCache) global._kvCache = {};
+
 async function kvGet(key) {
-  if (USE_UPSTASH) {
-    try {
-      const val = await upstashGet(key);
-      if (typeof val === 'string') {
-        try { return JSON.parse(val); } catch { return val; }
-      }
-      return val;
-    } catch (e) {
-      console.error(`[KV] GET ${key}:`, e.message);
-      return null;
-    }
-  } else {
+  // non-Upstash: use ephemeral in-memory Map as before
+  if (!USE_UPSTASH) {
     if (!global._memkv) global._memkv = new Map();
     const v = global._memkv.get(key);
     return v ? JSON.parse(v) : null;
   }
+
+  const entry = global._kvCache[key];
+  const now = Date.now();
+  if (entry && (now - entry.ts) < KV_CACHE_TTL * 1000) {
+    return entry.value;
+  }
+
+  try {
+    const raw = await upstashGet(key);
+    let parsed = raw;
+    if (typeof raw === 'string') {
+      try { parsed = JSON.parse(raw); } catch { parsed = raw; }
+    }
+    // update cache
+    global._kvCache[key] = { value: parsed, ts: Date.now(), dirty: false, timer: null };
+    return parsed;
+  } catch (e) {
+    console.error(`[KV] GET ${key}:`, e.message);
+    // If network fails, fallback to cache if available
+    if (entry) return entry.value;
+    return null;
+  }
+}
+
+async function _flushKeyToUpstash(key) {
+  const entry = global._kvCache[key];
+  if (!entry || !entry.dirty) return;
+  try {
+    await upstashSet(key, JSON.stringify(entry.value));
+    entry.dirty = false;
+    entry.ts = Date.now();
+  } catch (e) {
+    console.error(`[KV] FLUSH ${key}:`, e.message);
+  }
+}
+
+function _scheduleFlush(key) {
+  const entry = global._kvCache[key];
+  if (!entry) return;
+  if (entry.timer) clearTimeout(entry.timer);
+  entry.timer = setTimeout(() => {
+    entry.timer = null;
+    _flushKeyToUpstash(key);
+  }, KV_FLUSH_DEBOUNCE_MS);
+}
+
+// Periodic flush of all dirty keys
+if (USE_UPSTASH && !global._kvFlushInterval) {
+  global._kvFlushInterval = setInterval(async () => {
+    const keys = Object.keys(global._kvCache);
+    for (const k of keys) {
+      try { await _flushKeyToUpstash(k); } catch (e) { /* noop */ }
+    }
+  }, KV_PERIODIC_FLUSH_MS);
 }
 
 async function kvSet(key, obj) {
-  if (USE_UPSTASH) {
-    await upstashSet(key, JSON.stringify(obj));
-  } else {
+  if (!USE_UPSTASH) {
     if (!global._memkv) global._memkv = new Map();
     global._memkv.set(key, JSON.stringify(obj));
+    return;
   }
+
+  const prev = global._kvCache[key];
+  const serialized = obj;
+  // avoid unnecessary writes: if cached value equals new value, just update timestamp
+  if (prev && deepEqual(prev.value, serialized)) {
+    prev.ts = Date.now();
+    prev.dirty = false;
+    if (prev.timer) { clearTimeout(prev.timer); prev.timer = null; }
+    return;
+  }
+
+  // update cache and mark dirty
+  global._kvCache[key] = { value: serialized, ts: Date.now(), dirty: true, timer: null };
+  _scheduleFlush(key);
 }
 
 async function kvDelete(key) {
-  if (USE_UPSTASH) {
-    await upstashDel(key);
-  } else {
+  if (!USE_UPSTASH) {
     if (global._memkv) global._memkv.delete(key);
+    return;
   }
+
+  // remove from cache and attempt delete from Upstash
+  if (global._kvCache[key]) {
+    delete global._kvCache[key];
+  }
+  try {
+    await upstashDel(key);
+  } catch (e) {
+    console.error(`[KV] DEL ${key}:`, e.message);
+  }
+}
+
+// shallow deepEqual for JSON-able objects
+function deepEqual(a, b) {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch (e) { return false; }
 }
 
 function nowMs() { return Date.now(); }
@@ -145,6 +225,12 @@ async function addRejected(appId) {
   const rej = (await kvGet(KEY_REJECTED)) || {};
   rej[appId] = true;
   await kvSet(KEY_REJECTED, rej);
+  // also remove from games library if present
+  const games = (await kvGet(KEY_GAMES)) || {};
+  if (games[appId]) {
+    delete games[appId];
+    await kvSet(KEY_GAMES, games);
+  }
   return true;
 }
 
@@ -152,12 +238,28 @@ async function removeRejected(appId) {
   const rej = (await kvGet(KEY_REJECTED)) || {};
   delete rej[appId];
   await kvSet(KEY_REJECTED, rej);
+  // when un-rejecting, ensure it exists in games as inactive
+  const games = (await kvGet(KEY_GAMES)) || {};
+  if (!games[appId]) {
+    games[appId] = { mode: 0, added: false, createdAt: nowMs() };
+    await kvSet(KEY_GAMES, games);
+  }
   return true;
 }
 
-async function addGame(appId, mode = 0, added = false) {
+async function addGame(appId, mode = 0, added = undefined) {
   const games = (await kvGet(KEY_GAMES)) || {};
-  games[appId] = { mode: Number(mode), added: !!added, createdAt: nowMs() };
+  const exists = !!games[appId];
+  let finalAdded;
+  if (exists) {
+    finalAdded = (added === undefined) ? !!games[appId].added : !!added;
+    games[appId].mode = Number(mode);
+    // keep createdAt as-is
+  } else {
+    finalAdded = !!added;
+    games[appId] = { mode: Number(mode), added: finalAdded, createdAt: nowMs() };
+  }
+  games[appId].added = finalAdded;
   await kvSet(KEY_GAMES, games);
   return games[appId];
 }

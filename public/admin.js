@@ -54,7 +54,7 @@ async function loadState() {
 }
 
 function render(state) {
-  const { active, games, banned } = state;
+  const { active, games, banned, rejected } = state;
 
   document.getElementById('active-count').innerText = Object.keys(active).length;
   document.getElementById('games-count').innerText = Object.keys(games).length;
@@ -76,29 +76,35 @@ function render(state) {
     usersBody.appendChild(row);
   });
 
-  // Games
+  // Games list
   const gamesBody = document.querySelector('#games-table tbody');
   gamesBody.innerHTML = '';
-  Object.entries(games).forEach(([appId, data]) => {
+  Object.entries(games).forEach(([appId, info]) => {
     const row = document.createElement('tr');
-    const status = data.added ? '<span class="badge success">Active</span>' : '<span class="badge warning">Inactive</span>';
-
+    const status = info.added ? 'active' : 'inactive';
+    // If inactive: show Add and Reject. If active: show Reject only.
+    let actions = '';
+    if (!info.added) {
+      actions = `
+        <button onclick="showAddGameConfirm('${appId}')">Add</button>
+        <button onclick="rejectGame('${appId}')">Reject</button>
+      `;
+    } else {
+      actions = `<button onclick="rejectGame('${appId}')">Reject</button>`;
+    }
     row.innerHTML = `
       <td>${appId}</td>
-      <td>${data.mode === 1 ? 'Online Bypass' : 'Lua Manifest'}</td>
+      <td>${info.mode}</td>
       <td>${status}</td>
-      <td>
-        <button class="danger" onclick="rejectGame('${appId}')">Reject</button>
-      </td>
+      <td>${actions}</td>
     `;
     gamesBody.appendChild(row);
   });
 
-  // Rejected Games
-  const rejectedGames = state.rejected || {};
+  // Rejected list
   const rejectedBody = document.querySelector('#rejected-table tbody');
   rejectedBody.innerHTML = '';
-  Object.keys(rejectedGames).forEach(appId => {
+  Object.keys(rejected || {}).forEach(appId => {
     const row = document.createElement('tr');
     row.innerHTML = `
       <td>${appId}</td>
@@ -169,6 +175,13 @@ function showAddGameDialog() {
 
   const mode = confirm('Online Bypass mode?\n\nOK = Online Bypass (1)\nCancel = Lua Manifest (0)') ? 1 : 0;
 
+  addGame(appId, mode);
+}
+
+function showAddGameConfirm(appId) {
+  // Confirm activation for an existing appId; ask mode if needed
+  if (!confirm(`Add game ${appId} as active?`)) return;
+  const mode = confirm('Online Bypass mode?\n\nOK = Online Bypass (1)\nCancel = Lua Manifest (0)') ? 1 : 0;
   addGame(appId, mode);
 }
 
