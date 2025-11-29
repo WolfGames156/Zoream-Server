@@ -95,7 +95,7 @@ function render(state) {
     row.innerHTML = `
       <td>${appId}</td>
       <td>${info.mode}</td>
-      <td>${status}</td>
+      <td><span class="badge ${info.added ? 'status-active' : 'status-inactive'}">${info.added ? 'active' : 'inactive'}</span></td>
       <td>${actions}</td>
     `;
     gamesBody.appendChild(row);
@@ -172,24 +172,22 @@ async function unRejectGame(appId) {
 function showAddGameDialog() {
   const appId = prompt('Enter Steam App ID:');
   if (!appId) return;
-
-  const mode = confirm('Online Bypass mode?\n\nOK = Online Bypass (1)\nCancel = Lua Manifest (0)') ? 1 : 0;
-
-  addGame(appId, mode);
+  // Do not ask for mode here; activating/adding will preserve existing mode or use default
+  addGame(appId);
 }
 
 function showAddGameConfirm(appId) {
-  // Confirm activation for an existing appId; ask mode if needed
+  // Confirm activation for an existing appId; do not ask mode
   if (!confirm(`Add game ${appId} as active?`)) return;
-  const mode = confirm('Online Bypass mode?\n\nOK = Online Bypass (1)\nCancel = Lua Manifest (0)') ? 1 : 0;
-  addGame(appId, mode);
+  addGame(appId);
 }
 
 async function addGame(appId, mode) {
+  // Send only appId; don't force mode on server (it will preserve existing mode)
   await fetch('/api/admin/addgame', {
     method: 'POST',
     headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ appId, mode })
+    body: JSON.stringify({ appId })
   });
   loadState();
 }

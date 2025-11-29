@@ -1,152 +1,219 @@
 const {
   trackVisit, cleanupExpired, getAll, banIp, unbanIp,
-  addRejected, removeRejected, addGame, setGameAdded, removeGame, getAdminPass
+  addRejected, removeRejected, addGame, setGameAdded,
+  removeGame, getAdminPass
 } = require("./lib.js");
 
+// ---- HELPERS ----
+function normalizeIp(ip) {
+  if (!ip) return "unknown";
+  return ip.replace(/^::ffff:/, "");
+}
+
+function jsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let s = "";
+    req.on("data", chunk => (s += chunk));
+    req.on("end", () => {
+      if (!s) return resolve({});
+      try {
+        resolve(JSON.parse(s));
+      } catch (e) {
+        reject(e);
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+// ---- MAIN HANDLER ----
 module.exports = async function handler(req, res) {
+  // res.json helper
+  if (!res.json) {
+    res.json = (obj) => {
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(obj));
+    };
+  }
+
   const url = new URL(req.url, `http://${req.headers.host}`);
-  const pathname = url.pathname.replace(/^\/+/, "").split("/").slice(1).join("/");
-  // Note: Vercel will map /api/* to this file; we'll branch on req.url
-  const route = req.url.split("?")[0] || req.url;
 
   let ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "";
   if (Array.isArray(ip)) ip = ip[0];
-  // x-forwarded-for may be comma list
   if (typeof ip === "string" && ip.includes(",")) ip = ip.split(",")[0].trim();
+  ip = normalizeIp(ip);
 
-  // Cleanup only every 5 minutes to save KV quota
+  // periodic cleanup
   const now = Date.now();
-  if (!global._lastCleanup || (now - global._lastCleanup) > 300000) {
+  if (!global._lastCleanup || now - global._lastCleanup > 300000) {
     global._lastCleanup = now;
-    await cleanupExpired(300); // Remove IPs inactive for 5 minutes
+    await cleanupExpired(300);
   }
 
+  // OPTIONS
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-admin-pass");
-    return res.status(204).end();
+    res.statusCode = 204;
+    return res.end();
   }
 
-  // /api/track -> body: { clientId, appId? }  (clientId from localStorage)
+  // -------------------------
+  // /api/track
+  // -------------------------
   if (req.url.startsWith("/api/track")) {
     try {
       const body = req.method === "POST" ? await jsonBody(req) : {};
       const clientId = body.clientId || req.headers["x-client-id"] || null;
-      const result = await trackVisit(normalizeIp(ip), clientId);
-      // if client included appId and it's unknown, respond instructing to send appId check
+
+      const result = await trackVisit(ip, clientId);
+
       const appId = body.appId;
       let extra = {};
+
       if (appId) {
         const state = await getAll();
         const games = state.games || {};
         const rejected = state.rejected || {};
-        if (rejected[appId]) {
-          extra.gameStatus = "rejected";
-        } else if (!games[appId]) {
-          extra.gameStatus = "unknown"; // ask client to send appId checking result
-        } else {
+
+        if (rejected[appId]) extra.gameStatus = "rejected";
+        else if (!games[appId]) extra.gameStatus = "unknown";
+        else {
           extra.gameStatus = "known";
           extra.game = games[appId];
         }
       }
+
       res.setHeader("Access-Control-Allow-Origin", "*");
-      return res.json({ ok: true, ip: normalizeIp(ip), ...result, extra });
+      return res.json({ ok: true, ip, ...result, extra });
+
     } catch (e) {
-      console.error(e);
       res.setHeader("Access-Control-Allow-Origin", "*");
-      return res.status(500).json({ ok: false, error: e.message });
+      res.statusCode = 500;
+      return res.json({ ok: false, error: e.message });
     }
   }
 
-  // /api/reportGame -> body { appId, mode } mode: 0 -> lua manifest, 1 -> online bypass
+  // -------------------------
+  // /api/reportGame
+  // -------------------------
   if (req.url.startsWith("/api/reportGame")) {
     try {
       const body = await jsonBody(req);
       const { appId, mode } = body;
-      if (!appId) return res.status(400).json({ ok: false, error: "missing appId" });
-      // If the app is in rejected list, ignore
-      const games = (await getAll()).games || {};
-      const rejected = (await getAll()).rejected || {};
-      if (rejected[appId]) return res.json({ ok: false, reason: "rejected" });
-      // add game with mode. If game already exists, preserve its 'added' state.
-      const added = await addGame(appId, mode || 0);
+
+      if (!appId) {
+        res.statusCode = 400;
+        return res.json({ ok: false, error: "missing appId" });
+      }
+
+      const all = await getAll();
+      if (all.rejected?.[appId]) {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        return res.json({ ok: false, reason: "rejected" });
+      }
+
+      const added = await addGame(appId, mode);
       res.setHeader("Access-Control-Allow-Origin", "*");
       return res.json({ ok: true, game: added });
+
     } catch (e) {
-      console.error(e);
+      res.statusCode = 500;
       res.setHeader("Access-Control-Allow-Origin", "*");
-      return res.status(500).json({ ok: false, error: e.message });
+      return res.json({ ok: false, error: e.message });
     }
   }
 
-  // ADMIN actions (require header x-admin-pass)
+  // -------------------------
+  // ADMIN
+  // -------------------------
   if (req.url.startsWith("/api/admin/")) {
-    const pass = req.headers["x-admin-pass"] || req.query?.admin_pass || "";
-    const correct = await getAdminPass();
-    if (pass !== correct) return res.status(401).json({ ok: false, error: "unauthorized" });
+    const pass =
+      req.headers["x-admin-pass"] ||
+      url.searchParams.get("admin_pass") ||
+      "";
 
-    // GET /api/admin/state
+    const correct = await getAdminPass();
+    if (pass !== correct) {
+      res.statusCode = 401;
+      return res.json({ ok: false, error: "unauthorized" });
+    }
+
+    // ---- STATE (cached) ----
     if (req.url.startsWith("/api/admin/state")) {
-      const state = await getAll();
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      return res.json({ ok: true, state });
+      const CACHE_SEC = Number(process.env.ADMIN_STATE_CACHE_SEC) || 5;
+      const MIN_REQ_MS = Number(process.env.ADMIN_MIN_REQUEST_INTERVAL_MS) || 1000;
+
+      if (!global._adminStateCache) global._adminStateCache = { ts: 0, data: null };
+      if (!global._adminLastReq) global._adminLastReq = {};
+
+      const nowReq = Date.now();
+      const lastReq = global._adminLastReq[ip] || 0;
+
+      if (nowReq - lastReq < MIN_REQ_MS && global._adminStateCache.data) {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        return res.json({ ok: true, state: global._adminStateCache.data });
+      }
+
+      if (nowReq - global._adminStateCache.ts < CACHE_SEC * 1000 && global._adminStateCache.data) {
+        global._adminLastReq[ip] = nowReq;
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        return res.json({ ok: true, state: global._adminStateCache.data });
+      }
+
+      try {
+        const state = await getAll();
+        global._adminStateCache = { ts: Date.now(), data: state };
+        global._adminLastReq[ip] = nowReq;
+
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        return res.json({ ok: true, state });
+
+      } catch (e) {
+        if (global._adminStateCache.data) {
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          return res.json({ ok: true, state: global._adminStateCache.data });
+        }
+        res.statusCode = 500;
+        return res.json({ ok: false, error: e.message });
+      }
     }
-    // POST /api/admin/ban { ip }
-    if (req.url.startsWith("/api/admin/ban") && req.method === "POST") {
-      const body = await jsonBody(req);
+
+    // ---- Other admin actions ----
+    const body = req.method === "POST" ? await jsonBody(req) : {};
+
+    if (req.url.startsWith("/api/admin/ban")) {
       await banIp(body.ip);
-      res.setHeader("Access-Control-Allow-Origin", "*");
       return res.json({ ok: true });
     }
-    // POST /api/admin/unban { ip }
-    if (req.url.startsWith("/api/admin/unban") && req.method === "POST") {
-      const body = await jsonBody(req);
+    if (req.url.startsWith("/api/admin/unban")) {
       await unbanIp(body.ip);
-      res.setHeader("Access-Control-Allow-Origin", "*");
       return res.json({ ok: true });
     }
-    // POST /api/admin/reject { appId }
-    if (req.url.startsWith("/api/admin/reject") && req.method === "POST") {
-      const body = await jsonBody(req);
+    if (req.url.startsWith("/api/admin/reject")) {
       await addRejected(body.appId);
-      res.setHeader("Access-Control-Allow-Origin", "*");
       return res.json({ ok: true });
     }
-    // POST /api/admin/unreject { appId }
-    if (req.url.startsWith("/api/admin/unreject") && req.method === "POST") {
-      const body = await jsonBody(req);
+    if (req.url.startsWith("/api/admin/unreject")) {
       await removeRejected(body.appId);
-      res.setHeader("Access-Control-Allow-Origin", "*");
       return res.json({ ok: true });
     }
-    // POST /api/admin/setadded { appId, added }
-    if (req.url.startsWith("/api/admin/setadded") && req.method === "POST") {
-      const body = await jsonBody(req);
+    if (req.url.startsWith("/api/admin/setadded")) {
       await setGameAdded(body.appId, !!body.added);
-      res.setHeader("Access-Control-Allow-Origin", "*");
       return res.json({ ok: true });
     }
-    // POST /api/admin/removegame { appId }
-    if (req.url.startsWith("/api/admin/removegame") && req.method === "POST") {
-      const body = await jsonBody(req);
+    if (req.url.startsWith("/api/admin/removegame")) {
       await removeGame(body.appId);
-      res.setHeader("Access-Control-Allow-Origin", "*");
       return res.json({ ok: true });
     }
-    // POST /api/admin/addgame { appId, mode } - Add game as ACTIVE
-    if (req.url.startsWith("/api/admin/addgame") && req.method === "POST") {
-      const body = await jsonBody(req);
-      await addGame(body.appId, body.mode || 0, true); // added=true for admin
-      res.setHeader("Access-Control-Allow-Origin", "*");
+    if (req.url.startsWith("/api/admin/addgame")) {
+      await addGame(body.appId, body.mode, true);
       return res.json({ ok: true });
     }
-    // POST /api/admin/rejectgame { appId } - Move to rejected and remove from games
-    if (req.url.startsWith("/api/admin/rejectgame") && req.method === "POST") {
-      const body = await jsonBody(req);
+    if (req.url.startsWith("/api/admin/rejectgame")) {
       await removeGame(body.appId);
       await addRejected(body.appId);
-      res.setHeader("Access-Control-Allow-Origin", "*");
       return res.json({ ok: true });
     }
 
@@ -154,32 +221,6 @@ module.exports = async function handler(req, res) {
   }
 
   // fallback
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.status(404).json({ ok: false, error: "unknown route" });
-}
-
-// helpers
-function normalizeIp(ip) {
-  if (!ip) return "unknown";
-  return ip.replace(/^::ffff:/, "");
-}
-function jsonBody(req) {
-  return new Promise((resolve, reject) => {
-    let s = "";
-    req.on("data", chunk => s += chunk);
-    req.on("end", () => {
-      if (!s) return resolve({});
-      try { resolve(JSON.parse(s)); } catch (e) { reject(e); }
-    });
-    req.on("error", reject);
-  });
-}
-
-// convenience res.json for serverless env
-Object.defineProperty(Object.prototype, "json", {
-  value: function (obj) {
-    this.setHeader("Content-Type", "application/json");
-    this.end(JSON.stringify(obj));
-  },
-  enumerable: false
-});
+  res.statusCode = 404;
+  res.json({ ok: false, error: "unknown route" });
+};

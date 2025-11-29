@@ -231,4 +231,8 @@ input:focus {
 .badge.warning { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
 .badge.danger { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
 
+/* Active / Inactive status badges */
+.status-active { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.2); }
+.status-inactive { background: rgba(148, 163, 184, 0.06); color: #94a3b8; border: 1px solid rgba(148,163,184,0.08); }
+
 .hidden { display: none !important; }
