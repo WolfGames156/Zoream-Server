@@ -1,5 +1,5 @@
 // api/lib.js
-import fetch from "node-fetch";
+const fetch = require("node-fetch");
 
 const USE_UPSTASH = !!process.env.UPSTASH_REDIS_REST_URL && !!process.env.UPSTASH_REDIS_REST_TOKEN;
 const ADMIN_PASS = process.env.ADMIN_PASS || "admin123";
@@ -56,9 +56,9 @@ async function kvDelete(key) {
 // Utilities
 function nowMs() { return Date.now(); }
 
-export async function getAdminPass() { return ADMIN_PASS; }
+async function getAdminPass() { return ADMIN_PASS; }
 
-export async function getState() {
+async function getState() {
   const active = (await kvGet(KEY_ACTIVE)) || {};
   const games = (await kvGet(KEY_GAMES)) || {};
   const rejected = (await kvGet(KEY_REJECTED)) || {};
@@ -67,7 +67,7 @@ export async function getState() {
 }
 
 // Called on each incoming request to clean old IPs (>60s inactivity)
-export async function cleanupExpired(thresholdSec = 60) {
+async function cleanupExpired(thresholdSec = 60) {
   const state = await getState();
   const active = state.active || {};
   const now = nowMs();
@@ -84,7 +84,7 @@ export async function cleanupExpired(thresholdSec = 60) {
 
 // Track IP visit. clientId is a per-machine generated id from frontend.
 // Returns {newIp:bool, activeCount:int, activeIps:[], banned:boolean}
-export async function trackVisit(ip, clientId) {
+async function trackVisit(ip, clientId) {
   if (!ip) throw new Error("no ip");
   const state = await getState();
   if (state.banned && state.banned[ip]) return { banned: true };
@@ -112,7 +112,7 @@ export async function trackVisit(ip, clientId) {
 }
 
 // Admin actions
-export async function banIp(ip) {
+async function banIp(ip) {
   const state = await getState();
   const banned = state.banned || {};
   banned[ip] = true;
@@ -123,38 +123,43 @@ export async function banIp(ip) {
   await kvSet(KEY_ACTIVE, active);
   return true;
 }
-export async function unbanIp(ip) {
+async function unbanIp(ip) {
   const state = await getState();
   const banned = state.banned || {};
   delete banned[ip];
   await kvSet(KEY_BANNED, banned);
   return true;
 }
-export async function addRejected(appId) {
+async function addRejected(appId) {
   const rej = (await kvGet(KEY_REJECTED)) || {};
   rej[appId] = true;
   await kvSet(KEY_REJECTED, rej);
   return true;
 }
-export async function removeRejected(appId) {
+async function removeRejected(appId) {
   const rej = (await kvGet(KEY_REJECTED)) || {};
   delete rej[appId];
   await kvSet(KEY_REJECTED, rej);
   return true;
 }
-export async function addGame(appId, mode = 0, added = false) {
+async function addGame(appId, mode = 0, added = false) {
   const games = (await kvGet(KEY_GAMES)) || {};
   games[appId] = { mode: Number(mode), added: !!added, createdAt: nowMs() };
   await kvSet(KEY_GAMES, games);
   return games[appId];
 }
-export async function setGameAdded(appId, added) {
+async function setGameAdded(appId, added) {
   const games = (await kvGet(KEY_GAMES)) || {};
   if (!games[appId]) return null;
   games[appId].added = !!added;
   await kvSet(KEY_GAMES, games);
   return games[appId];
 }
-export async function getAll() {
+async function getAll() {
   return await getState();
 }
+
+module.exports = {
+  trackVisit, cleanupExpired, getAll, banIp, unbanIp,
+  addRejected, removeRejected, addGame, setGameAdded, getAdminPass
+};

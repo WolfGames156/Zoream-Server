@@ -1,13 +1,13 @@
 /**
  * Vercel'de çalışan Zoream Server API client.
- * ESM format. Electron veya Node.js'ten kullanabilirsiniz.
+ * CommonJS format. Electron veya Node.js'ten kullanabilirsiniz.
  * 
  * Kullanım:
- *   import { callZoreamServer } from './api.js';
- *   const data = await callZoreamServer('/active-users');
+ *   const { callZoreamServer } = require('./api.js');
+ *   callZoreamServer('/active-users').then(data => console.log(data));
  */
 
-export async function callZoreamServer(endpoint = '/', options = {}) {
+async function callZoreamServer(endpoint = '/', options = {}) {
   const {
     method = 'GET',
     headers = {},
@@ -59,4 +59,4 @@ export async function callZoreamServer(endpoint = '/', options = {}) {
   return response.text();
 }
 
-export default { callZoreamServer };
+module.exports = { callZoreamServer };

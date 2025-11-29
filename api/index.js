@@ -1,11 +1,11 @@
 // api/index.js
-import { parse as parseCookie } from "cookie";
-import {
+const { parse: parseCookie } = require("cookie");
+const {
   trackVisit, cleanupExpired, getAll, banIp, unbanIp,
   addRejected, removeRejected, addGame, setGameAdded, getAdminPass
-} from "./lib.js";
+} = require("./lib.js");
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname.replace(/^\/+/, "").split("/").slice(1).join("/");
   // Note: Vercel will map /api/* to this file; we'll branch on req.url
