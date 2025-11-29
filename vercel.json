@@ -2,18 +2,17 @@
   "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": "public",
-  "functions": {
-    "api/**/*.js": {
-      "runtime": "@vercel/node@3.0.0"
-    }
-  },
   "env": {
-    "NODE_VERSION": "24.x"
+    "NODE_VERSION": "20.x"
   },
   "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/(.*)", "dest": "/index.html" }
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
   ]
 }
-
-
