@@ -162,3 +162,21 @@ async function unRejectGame(appId) {
   });
   loadState();
 }
+
+function showAddGameDialog() {
+  const appId = prompt('Enter Steam App ID:');
+  if (!appId) return;
+
+  const mode = confirm('Online Bypass mode?\n\nOK = Online Bypass (1)\nCancel = Lua Manifest (0)') ? 1 : 0;
+
+  addGame(appId, mode);
+}
+
+async function addGame(appId, mode) {
+  await fetch('/api/admin/addgame', {
+    method: 'POST',
+    headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ appId, mode })
+  });
+  loadState();
+}

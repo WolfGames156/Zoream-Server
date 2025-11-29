@@ -18,7 +18,7 @@ module.exports = async function handler(req, res) {
   const now = Date.now();
   if (!global._lastCleanup || (now - global._lastCleanup) > 300000) {
     global._lastCleanup = now;
-    await cleanupExpired(60);
+    await cleanupExpired(300); // Remove IPs inactive for 5 minutes
   }
 
   if (req.method === "OPTIONS") {

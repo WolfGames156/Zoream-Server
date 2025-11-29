@@ -83,7 +83,7 @@ async function getState() {
   return { active, games, rejected, banned };
 }
 
-async function cleanupExpired(thresholdSec = 60) {
+async function cleanupExpired(thresholdSec = 300) {
   const state = await getState();
   const active = state.active || {};
   const now = nowMs();

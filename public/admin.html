@@ -9,7 +9,6 @@
 </head>
 
 <body>
-  <!-- Login Overlay -->
   <div id="login-overlay">
     <div class="login-box">
       <h1>Zoream Admin</h1>
@@ -58,7 +57,10 @@
     </div>
 
     <div class="card">
-      <h2>Games Library</h2>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2 style="margin: 0;">Games Library</h2>
+        <button onclick="showAddGameDialog()">Add Game</button>
+      </div>
       <div class="table-container">
         <table id="games-table">
           <thead>
