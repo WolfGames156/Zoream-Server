@@ -9,14 +9,17 @@ module.exports = async function handler(req, res) {
   // Note: Vercel will map /api/* to this file; we'll branch on req.url
   const route = req.url.split("?")[0] || req.url;
 
-  // get IP (Vercel/Proxy support)
   let ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "";
   if (Array.isArray(ip)) ip = ip[0];
   // x-forwarded-for may be comma list
   if (typeof ip === "string" && ip.includes(",")) ip = ip.split(",")[0].trim();
 
-  // Basic cleanup each request
-  await cleanupExpired(60);
+  // Cleanup only every 5 minutes to save KV quota
+  const now = Date.now();
+  if (!global._lastCleanup || (now - global._lastCleanup) > 300000) {
+    global._lastCleanup = now;
+    await cleanupExpired(60);
+  }
 
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");

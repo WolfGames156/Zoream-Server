@@ -16,7 +16,7 @@ async function attemptLogin() {
       document.getElementById('login-overlay').classList.add('hidden');
       document.getElementById('dashboard').classList.remove('hidden');
       loadState();
-      setInterval(loadState, 1000); // Refresh every 1s
+      setInterval(loadState, 5000); // Refresh every 5s to save KV quota
     } else {
       document.getElementById('login-error').style.display = 'block';
     }
@@ -112,21 +112,20 @@ function render(state) {
     bannedBody.appendChild(row);
   });
 
-  // Rejected Games (shown in a separate section)
+  // Rejected Games (separate table)
   const rejectedGames = state.rejected || {};
-  if (Object.keys(rejectedGames).length > 0) {
-    // We'll add them to the banned table for now, or you can create a new table
-    Object.keys(rejectedGames).forEach(appId => {
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>Game: ${appId}</td>
-        <td>
-          <button onclick="unRejectGame('${appId}')">Add to Games</button>
-        </td>
-      `;
-      bannedBody.appendChild(row);
-    });
-  }
+  const rejectedBody = document.querySelector('#rejected-table tbody');
+  rejectedBody.innerHTML = '';
+  Object.keys(rejectedGames).forEach(appId => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${appId}</td>
+      <td>
+        <button onclick="unRejectGame('${appId}')">Add to Games</button>
+      </td>
+    `;
+    rejectedBody.appendChild(row);
+  });
 }
 
 async function banIp(ip) {
