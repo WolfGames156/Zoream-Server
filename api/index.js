@@ -1,5 +1,5 @@
 // api/index.js
-const { parse: parseCookie } = require("cookie");
+
 const {
   trackVisit, cleanupExpired, getAll, banIp, unbanIp,
   addRejected, removeRejected, addGame, setGameAdded, getAdminPass
@@ -155,7 +155,7 @@ function jsonBody(req) {
 
 // convenience res.json for serverless env
 Object.defineProperty(Object.prototype, "json", {
-  value: function(obj) {
+  value: function (obj) {
     this.setHeader("Content-Type", "application/json");
     this.end(JSON.stringify(obj));
   },
