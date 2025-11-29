@@ -11,9 +11,8 @@ module.exports = async function handler(req, res) {
   // Note: Vercel will map /api/* to this file; we'll branch on req.url
   const route = req.url.split("?")[0] || req.url;
 
-  // get IP (trust x-forwarded-for if set)
-  const trustForward = process.env.TRUST_X_FORWARDED_FOR === "true";
-  let ip = (trustForward ? req.headers["x-forwarded-for"] : null) || req.socket.remoteAddress || req.connection?.remoteAddress || "";
+  // get IP (Vercel/Proxy support)
+  let ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "";
   if (Array.isArray(ip)) ip = ip[0];
   // x-forwarded-for may be comma list
   if (typeof ip === "string" && ip.includes(",")) ip = ip.split(",")[0].trim();

@@ -16,7 +16,7 @@ async function attemptLogin() {
       document.getElementById('login-overlay').classList.add('hidden');
       document.getElementById('dashboard').classList.remove('hidden');
       loadState();
-      setInterval(loadState, 5000); // Refresh every 5s
+      setInterval(loadState, 1000); // Refresh every 1s
     } else {
       document.getElementById('login-error').style.display = 'block';
     }
