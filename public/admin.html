@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Admin Panel</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="card">
+    <h1>Admin Panel</h1>
+    <div id="auth">
+      <input id="adminPass" placeholder="Admin şifrenizi gir" />
+      <button id="loginBtn">Giriş</button>
+      <div id="authMsg"></div>
+    </div>
+
+    <div id="panel" style="display:none">
+      <h3>Durum</h3>
+      <pre id="stateBox" style="white-space:pre-wrap"></pre>
+
+      <h3>İşlemler</h3>
+      <div>
+        <input id="banIpInput" placeholder="IP banla"/>
+        <button id="banBtn">Banla</button>
+        <button id="unbanBtn">Ban Kaldır</button>
+      </div>
+      <div style="margin-top:8px">
+        <input id="rejectAppInput" placeholder="Reddedilecek appId"/>
+        <button id="rejectBtn">Reddet</button>
+        <button id="unrejectBtn">Reddetme Kaldır</button>
+      </div>
+      <div style="margin-top:8px">
+        <input id="setAddedApp" placeholder="AppId onayla"/>
+        <button id="setAddedBtn">Eklendi Olarak İşaretle</button>
+      </div>
+    </div>
+  </div>
+  <script src="/admin.js"></script>
+</body>
+</html>
