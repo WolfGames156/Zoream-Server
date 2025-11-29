@@ -26,24 +26,25 @@ async function kvGet(key) {
   if (USE_UPSTASH) {
     try {
       const r = await upstashRequest({ "commands": [["GET", key]] });
-      // Upstash pipeline response format: [{result: "value"}, ...] or similar depending on client.
-      // But here we are using raw REST pipeline.
-      // If the previous code used r?.results?.[0]?.[1], it might be adapting to a specific response.
-      // Let's try to be robust.
-      // Common Upstash REST pipeline response: [ { result: "..." } ]
-      // But let's stick to what was there if possible, or use a safer access.
 
-      // Actually, let's look at the previous code's assumption: r.results[0][1]
-      // This looks like it expects [ [null, "value"], ... ] ?
-      // Or maybe { results: [ { ... } ] } ?
+      // Upstash REST API response handling
+      // Pipeline: [ { result: "..." } ]
+      // Single Command: { result: "..." }
+      let val = null;
+      if (Array.isArray(r)) {
+        val = r[0]?.result; // Pipeline response
+      } else if (r && r.result) {
+        val = r.result; // Single command response
+      } else if (r?.results) {
+        // Legacy or different pipeline format
+        val = r.results[0]?.result || r.results[0];
+      }
 
-      // To be safe, let's assume the previous code was working for the user's setup if they had one.
-      // But since they are setting it up NEW, let's use the standard single command if possible?
-      // No, let's stick to the code structure but fix the corruption.
-
-      // I will use a safer parsing logic.
-      const val = r?.results?.[0]?.[1] ?? r?.[0]?.result ?? null;
-      return val ? JSON.parse(val) : null;
+      // If result is string, try to parse JSON. If it's already object/null, use as is.
+      if (typeof val === 'string') {
+        try { return JSON.parse(val); } catch { return val; }
+      }
+      return val;
     } catch (e) {
       console.error("KV Error", e);
       return null;
