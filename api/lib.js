@@ -6,46 +6,46 @@ const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_RES
 const USE_UPSTASH = !!UPSTASH_URL && !!UPSTASH_TOKEN;
 const ADMIN_PASS = process.env.ADMIN_PASS || "admin123";
 
-console.log('[Zoream] Upstash configured:', USE_UPSTASH ? 'YES' : 'NO (using memory)');
+console.log('[Zoream] Upstash:', USE_UPSTASH ? 'YES' : 'NO');
 
-// Key names in Redis
 const KEY_ACTIVE = "active_ips_v1";
 const KEY_GAMES = "games_v1";
 const KEY_REJECTED = "rejected_v1";
 const KEY_BANNED = "banned_ips_v1";
 
-// helper for Upstash REST
-async function upstashRequest(body) {
-  const res = await fetch(UPSTASH_URL, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+// Upstash REST API - Direct endpoint calls
+async function upstashGet(key) {
+  const res = await fetch(`${UPSTASH_URL}/get/${encodeURIComponent(key)}`, {
+    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
   });
-  return res.json();
+  const data = await res.json();
+  return data.result;
+}
+
+async function upstashSet(key, value) {
+  await fetch(`${UPSTASH_URL}/set/${encodeURIComponent(key)}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, "Content-Type": "text/plain" },
+    body: value
+  });
+}
+
+async function upstashDel(key) {
+  await fetch(`${UPSTASH_URL}/del/${encodeURIComponent(key)}`, {
+    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
+  });
 }
 
 async function kvGet(key) {
   if (USE_UPSTASH) {
     try {
-      const r = await upstashRequest({ "commands": [["GET", key]] });
-      console.log(`[KV GET] ${key}:`, JSON.stringify(r).substring(0, 200));
-
-      // Upstash pipeline response: [{"result": "value"}]
-      let val = null;
-      if (Array.isArray(r) && r.length > 0) {
-        val = r[0].result;
-      }
-
+      const val = await upstashGet(key);
       if (typeof val === 'string') {
-        try {
-          return JSON.parse(val);
-        } catch {
-          return val;
-        }
+        try { return JSON.parse(val); } catch { return val; }
       }
       return val;
     } catch (e) {
-      console.error(`[KV Error] GET ${key}:`, e.message);
+      console.error(`[KV] GET ${key}:`, e.message);
       return null;
     }
   } else {
@@ -57,8 +57,7 @@ async function kvGet(key) {
 
 async function kvSet(key, obj) {
   if (USE_UPSTASH) {
-    const r = await upstashRequest({ "commands": [["SET", key, JSON.stringify(obj)]] });
-    console.log(`[KV SET] ${key}:`, JSON.stringify(r));
+    await upstashSet(key, JSON.stringify(obj));
   } else {
     if (!global._memkv) global._memkv = new Map();
     global._memkv.set(key, JSON.stringify(obj));
@@ -67,7 +66,7 @@ async function kvSet(key, obj) {
 
 async function kvDelete(key) {
   if (USE_UPSTASH) {
-    await upstashRequest({ "commands": [["DEL", key]] });
+    await upstashDel(key);
   } else {
     if (global._memkv) global._memkv.delete(key);
   }
