@@ -1,73 +1,142 @@
-// public/admin.js
-const adminPassKey = "zoreamserver156_sys0xa7";
-const storePass = (p) => { sessionStorage.setItem(adminPassKey, p) };
-const getPass = () => sessionStorage.getItem(adminPassKey) || "";
+let adminPass = localStorage.getItem('zoream_admin_pass') || '';
 
-document.getElementById("loginBtn").addEventListener("click", async () => {
-  const p = document.getElementById("adminPass").value || "";
-  storePass(p);
-  const ok = await testAuth();
-  document.getElementById("authMsg").innerText = ok ? "Giriş başarılı" : "Giriş Hatalı";
-  if (ok) showPanel();
-});
+async function attemptLogin() {
+  const input = document.getElementById('admin-pass');
+  const pass = input.value;
 
-async function testAuth() {
-  const p = getPass();
-  const r = await fetch(`/api/admin/state?admin_pass=${encodeURIComponent(p)}`);
-  const j = await r.json();
-  return j.ok;
+  // Verify pass by trying to fetch state
+  try {
+    const res = await fetch('/api/admin/state', {
+      headers: { 'x-admin-pass': pass }
+    });
+
+    if (res.ok) {
+      adminPass = pass;
+      localStorage.setItem('zoream_admin_pass', pass);
+      document.getElementById('login-overlay').classList.add('hidden');
+      document.getElementById('dashboard').classList.remove('hidden');
+      loadState();
+      setInterval(loadState, 5000); // Refresh every 5s
+    } else {
+      document.getElementById('login-error').style.display = 'block';
+    }
+  } catch (e) {
+    console.error(e);
+    document.getElementById('login-error').innerText = 'Connection Error';
+    document.getElementById('login-error').style.display = 'block';
+  }
 }
 
-async function showPanel() {
-  document.getElementById("auth").style.display = "none";
-  document.getElementById("panel").style.display = "block";
-  loadState();
-  setInterval(loadState, 8000);
+function logout() {
+  localStorage.removeItem('zoream_admin_pass');
+  location.reload();
+}
+
+// Auto-login if pass exists
+if (adminPass) {
+  document.getElementById('admin-pass').value = adminPass;
+  attemptLogin();
 }
 
 async function loadState() {
-  const p = getPass();
-  const r = await fetch(`/api/admin/state?admin_pass=${encodeURIComponent(p)}`);
-  const j = await r.json();
-  if (!j.ok) {
-    document.getElementById("stateBox").innerText = "Yetkisiz veya hata";
-    return;
+  try {
+    const res = await fetch('/api/admin/state', {
+      headers: { 'x-admin-pass': adminPass }
+    });
+    if (!res.ok) {
+      if (res.status === 401) logout();
+      return;
+    }
+    const data = await res.json();
+    if (data.ok) {
+      render(data.state);
+    }
+  } catch (e) {
+    console.error(e);
   }
-  document.getElementById("stateBox").innerText = JSON.stringify(j.state, null, 2);
 }
 
-async function postAdmin(path, body) {
-  const p = getPass();
-  const r = await fetch(`/api/admin/${path}?admin_pass=${encodeURIComponent(p)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+function render(state) {
+  const { active, games, banned } = state;
+
+  // Stats
+  document.getElementById('active-count').innerText = Object.keys(active).length;
+  document.getElementById('games-count').innerText = Object.keys(games).length;
+  document.getElementById('banned-count').innerText = Object.keys(banned).length;
+
+  // Active Users
+  const usersBody = document.querySelector('#users-table tbody');
+  usersBody.innerHTML = '';
+  Object.entries(active).forEach(([ip, data]) => {
+    const row = document.createElement('tr');
+    const lastSeen = new Date(data.lastSeen).toLocaleTimeString();
+    row.innerHTML = `
+      <td>${ip}</td>
+      <td>${lastSeen}</td>
+      <td>
+        <button class="danger" onclick="banIp('${ip}')">Ban</button>
+      </td>
+    `;
+    usersBody.appendChild(row);
   });
-  return r.json();
+
+  // Games
+  const gamesBody = document.querySelector('#games-table tbody');
+  gamesBody.innerHTML = '';
+  Object.entries(games).forEach(([appId, data]) => {
+    const row = document.createElement('tr');
+    const status = data.added ? '<span class="badge success">Active</span>' : '<span class="badge warning">Pending</span>';
+    row.innerHTML = `
+      <td>${appId}</td>
+      <td>${data.mode === 1 ? 'Online Bypass' : 'Lua Manifest'}</td>
+      <td>${status}</td>
+      <td>
+        <button class="danger" onclick="deleteGame('${appId}')">Reject</button>
+      </td>
+    `;
+    gamesBody.appendChild(row);
+  });
+
+  // Banned
+  const bannedBody = document.querySelector('#banned-table tbody');
+  bannedBody.innerHTML = '';
+  Object.keys(banned).forEach(ip => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${ip}</td>
+      <td>
+        <button onclick="unbanIp('${ip}')">Unban</button>
+      </td>
+    `;
+    bannedBody.appendChild(row);
+  });
 }
 
-document.getElementById("banBtn").addEventListener("click", async () => {
-  const ip = document.getElementById("banIpInput").value.trim();
-  await postAdmin("ban", { ip });
+async function banIp(ip) {
+  if (!confirm(`Ban IP ${ip}?`)) return;
+  await fetch('/api/admin/ban', {
+    method: 'POST',
+    headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ip })
+  });
   loadState();
-});
-document.getElementById("unbanBtn").addEventListener("click", async () => {
-  const ip = document.getElementById("banIpInput").value.trim();
-  await postAdmin("unban", { ip });
+}
+
+async function unbanIp(ip) {
+  await fetch('/api/admin/unban', {
+    method: 'POST',
+    headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ip })
+  });
   loadState();
-});
-document.getElementById("rejectBtn").addEventListener("click", async () => {
-  const appId = document.getElementById("rejectAppInput").value.trim();
-  await postAdmin("reject", { appId });
+}
+
+async function deleteGame(appId) {
+  if (!confirm(`Reject game ${appId}? This will block it.`)) return;
+  await fetch('/api/admin/reject', {
+    method: 'POST',
+    headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ appId })
+  });
   loadState();
-});
-document.getElementById("unrejectBtn").addEventListener("click", async () => {
-  const appId = document.getElementById("rejectAppInput").value.trim();
-  await postAdmin("unreject", { appId });
-  loadState();
-});
-document.getElementById("setAddedBtn").addEventListener("click", async () => {
-  const appId = document.getElementById("setAddedApp").value.trim();
-  await postAdmin("setadded", { appId, added: true });
-  loadState();
-});
+}

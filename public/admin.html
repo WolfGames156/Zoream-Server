@@ -1,41 +1,96 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
+
 <head>
-  <meta charset="utf-8">
-  <title>Admin Panel</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link rel="stylesheet" href="/styles.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zoream Admin</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
-  <div class="card">
-    <h1>Admin Panel</h1>
-    <div id="auth">
-      <input id="adminPass" placeholder="Admin şifrenizi gir" />
-      <button id="loginBtn">Giriş</button>
-      <div id="authMsg"></div>
+  <!-- Login Overlay -->
+  <div id="login-overlay">
+    <div class="login-box">
+      <h1>Zoream Admin</h1>
+      <p style="color: #94a3b8; margin-bottom: 2rem;">Secure Access Required</p>
+      <input type="password" id="admin-pass" placeholder="Enter Admin Password">
+      <button onclick="attemptLogin()">Login</button>
+      <p id="login-error" style="color: var(--danger-color); margin-top: 1rem; display: none;">Invalid Password</p>
+    </div>
+  </div>
+
+  <div class="container hidden" id="dashboard">
+    <header>
+      <h1>Zoream Dashboard</h1>
+      <button onclick="logout()" class="danger">Logout</button>
+    </header>
+
+    <div class="stats-grid">
+      <div class="card stat-item">
+        <span class="stat-label">Active Users</span>
+        <span class="stat-value" id="active-count">0</span>
+      </div>
+      <div class="card stat-item">
+        <span class="stat-label">Total Games</span>
+        <span class="stat-value" id="games-count">0</span>
+      </div>
+      <div class="card stat-item">
+        <span class="stat-label">Banned IPs</span>
+        <span class="stat-value" id="banned-count">0</span>
+      </div>
     </div>
 
-    <div id="panel" style="display:none">
-      <h3>Durum</h3>
-      <pre id="stateBox" style="white-space:pre-wrap"></pre>
+    <div class="card">
+      <h2>Active Users</h2>
+      <div class="table-container">
+        <table id="users-table">
+          <thead>
+            <tr>
+              <th>IP Address</th>
+              <th>Last Seen</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
 
-      <h3>İşlemler</h3>
-      <div>
-        <input id="banIpInput" placeholder="IP banla"/>
-        <button id="banBtn">Banla</button>
-        <button id="unbanBtn">Ban Kaldır</button>
+    <div class="card">
+      <h2>Games Library</h2>
+      <div class="table-container">
+        <table id="games-table">
+          <thead>
+            <tr>
+              <th>App ID</th>
+              <th>Mode</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
       </div>
-      <div style="margin-top:8px">
-        <input id="rejectAppInput" placeholder="Reddedilecek appId"/>
-        <button id="rejectBtn">Reddet</button>
-        <button id="unrejectBtn">Reddetme Kaldır</button>
-      </div>
-      <div style="margin-top:8px">
-        <input id="setAddedApp" placeholder="AppId onayla"/>
-        <button id="setAddedBtn">Eklendi Olarak İşaretle</button>
+    </div>
+
+    <div class="card">
+      <h2>Banned IPs</h2>
+      <div class="table-container">
+        <table id="banned-table">
+          <thead>
+            <tr>
+              <th>IP Address</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
       </div>
     </div>
   </div>
-  <script src="/admin.js"></script>
+
+  <script src="admin.js"></script>
 </body>
+
 </html>

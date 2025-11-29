@@ -1,37 +1,18 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Active Users Panel</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="/styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zoream Server</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="card">
-    <h1>Uygulama - Aktif Kullanıcılar</h1>
-    <div class="stats">
-      <div class="stat">
-        <div id="activeCount" class="big">0</div>
-        <div class="label">Aktif Kullanıcı</div>
-      </div>
-      <div class="stat">
-        <div id="ipList" class="small">-</div>
-        <div class="label">Aktif IP'ler</div>
-      </div>
-    </div>
-
-    <div class="game-section">
-      <h3>Oyun Ekle / Kontrol</h3>
-      <input id="appId" placeholder="App ID (ör: 123456)" />
-      <button id="checkBtn">Kontrol Et / Gönder</button>
-      <div id="gameResult"></div>
-    </div>
-
-    <div style="margin-top:12px">
-      <small>Client-id localStorage ile tutulur; aynı bilgisayar birden fazla arttırmaz.</small>
+  <div class="container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; text-align: center;">
+    <h1>Zoream Server</h1>
+    <p style="margin-top: 1rem; color: #94a3b8;">System Operational</p>
+    <div style="margin-top: 2rem;">
+      <span class="badge success">Online</span>
     </div>
   </div>
-
-  <script src="/app.js"></script>
 </body>
 </html>

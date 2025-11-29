@@ -69,8 +69,8 @@ module.exports = async function handler(req, res) {
       const games = (await getAll()).games || {};
       const rejected = (await getAll()).rejected || {};
       if (rejected[appId]) return res.json({ ok: false, reason: "rejected" });
-      // add game with mode and mark added=false (admin must approve)
-      const added = await addGame(appId, mode || 0, false);
+      // add game with mode and mark added=true (auto approved as per user request)
+      const added = await addGame(appId, mode || 0, true);
       res.setHeader("Access-Control-Allow-Origin", "*");
       return res.json({ ok: true, game: added });
     } catch (e) {
