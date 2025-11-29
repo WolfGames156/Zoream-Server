@@ -1,25 +1,3 @@
-// api/lib.js
-const fetch = require("node-fetch");
-
-const USE_UPSTASH = !!process.env.UPSTASH_REDIS_REST_URL && !!process.env.UPSTASH_REDIS_REST_TOKEN;
-const ADMIN_PASS = process.env.ADMIN_PASS || "admin123";
-
-// Key names in Redis
-const KEY_ACTIVE = "active_ips_v1"; // hash JSON
-const KEY_GAMES = "games_v1";       // hash of appId -> {mode:0|1, added:false}
-const KEY_REJECTED = "rejected_v1"; // set of appIds
-const KEY_BANNED = "banned_ips_v1"; // set of ips
-
-// helper for Upstash REST
-async function upstashRequest(body) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  return res.json();
 }
 
 async function kvGet(key) {
