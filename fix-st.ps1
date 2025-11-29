@@ -16,44 +16,42 @@ $registryPaths = @(
     "HKCU:\Software\Classes\steam\shell\open\command"
 )
 
-$steamPath = $null
-
 foreach ($regPath in $registryPaths) {
-    if (Test-Path $regPath) {
+    if (-not (Test-Path $regPath)) { continue }
 
-        try {
-            $props = Get-ItemProperty -Path $regPath -ErrorAction Stop
-        } catch {
-            continue
+    try {
+        $props = Get-ItemProperty -Path $regPath -ErrorAction Stop
+    } catch {
+        continue
+    }
+
+    # InstallPath
+    if ($props.PSObject.Properties.Name -contains "InstallPath") {
+        if (Test-Path $props.InstallPath) {
+            $steamPath = $props.InstallPath
+            break
         }
+    }
 
-        # InstallPath varsa direkt al
-        if ($props.PSObject.Properties.Name -contains "InstallPath") {
-            if (Test-Path $props.InstallPath) {
-                $steamPath = $props.InstallPath
+    # SteamPath (bazı sistemlerde farklı)
+    if ($props.PSObject.Properties.Name -contains "SteamPath") {
+        if (Test-Path $props.SteamPath) {
+            $steamPath = $props.SteamPath
+            break
+        }
+    }
+
+    # DefaultValue = steam.exe komut satırı
+    if ($regPath -like "*steam\shell\open\command*") {
+        $cmd = (Get-Item $regPath).GetValue("")  # <-- doğru olan burası
+        if ($cmd) {
+            # "C:\Program Files (x86)\Steam\steam.exe" -applaunch 730
+            $exe = $cmd.Split('"')[1]
+            $steamDir = Split-Path $exe -Parent
+
+            if (Test-Path $steamDir) {
+                $steamPath = $steamDir
                 break
-            }
-        }
-
-        # Bazı sistemlerde Steam yolu "SteamPath" diye kayıtlı oluyor
-        if ($props.PSObject.Properties.Name -contains "SteamPath") {
-            if (Test-Path $props.SteamPath) {
-                $steamPath = $props.SteamPath
-                break
-            }
-        }
-
-        # En son çare: steam.exe'nin komut satırından yol çıkarma
-        if ($regPath -like "*steam\shell\open\command*") {
-            $cmd = $props.'(default)'
-            if ($cmd) {
-                # "C:\Program Files (x86)\Steam\steam.exe" -applaunch
-                $exe = $cmd.Split('"')[1]
-                $steamDir = Split-Path $exe -Parent
-                if (Test-Path $steamDir) {
-                    $steamPath = $steamDir
-                    break
-                }
             }
         }
     }
@@ -63,13 +61,8 @@ if ($steamPath) {
     Write-Host "Found Steam installation: $steamPath" -ForegroundColor Green
 } else {
     Write-Host "Steam installation not found!" -ForegroundColor Red
-}
-
-if (-not $steamPath) {
-    Write-Host "ERROR: Could not find Steam installation in registry" -ForegroundColor Red
     exit 1
 }
-
 
 # Step 3: Count .lua files in config/stplug-in
 Write-Host "`n[Step 3] Counting .lua files in config/stplug-in..." -ForegroundColor Yellow
