@@ -5,9 +5,7 @@
   "env": {
     "NODE_VERSION": "20.x"
   },
-    "engines": {
-    "node": "20.x"
-  },
+
   "routes": [
     {
       "src": "/api/(.*)",
