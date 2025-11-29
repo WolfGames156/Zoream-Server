@@ -1,8 +1,6 @@
-// api/index.js
-
 const {
   trackVisit, cleanupExpired, getAll, banIp, unbanIp,
-  addRejected, removeRejected, addGame, setGameAdded, getAdminPass
+  addRejected, removeRejected, addGame, setGameAdded, removeGame, getAdminPass
 } = require("./lib.js");
 
 module.exports = async function handler(req, res) {
@@ -123,6 +121,13 @@ module.exports = async function handler(req, res) {
     if (req.url.startsWith("/api/admin/setadded") && req.method === "POST") {
       const body = await jsonBody(req);
       await setGameAdded(body.appId, !!body.added);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      return res.json({ ok: true });
+    }
+    // POST /api/admin/removegame { appId }
+    if (req.url.startsWith("/api/admin/removegame") && req.method === "POST") {
+      const body = await jsonBody(req);
+      await removeGame(body.appId);
       res.setHeader("Access-Control-Allow-Origin", "*");
       return res.json({ ok: true });
     }

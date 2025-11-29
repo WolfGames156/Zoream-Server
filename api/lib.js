@@ -170,11 +170,18 @@ async function setGameAdded(appId, added) {
   return games[appId];
 }
 
+async function removeGame(appId) {
+  const games = (await kvGet(KEY_GAMES)) || {};
+  delete games[appId];
+  await kvSet(KEY_GAMES, games);
+  return true;
+}
+
 async function getAll() {
   return await getState();
 }
 
 module.exports = {
   trackVisit, cleanupExpired, getAll, banIp, unbanIp,
-  addRejected, removeRejected, addGame, setGameAdded, getAdminPass
+  addRejected, removeRejected, addGame, setGameAdded, removeGame, getAdminPass
 };

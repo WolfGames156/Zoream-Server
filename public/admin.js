@@ -91,13 +91,14 @@ function render(state) {
       <td>${data.mode === 1 ? 'Online Bypass' : 'Lua Manifest'}</td>
       <td>${status}</td>
       <td>
+        <button onclick="removeGame('${appId}')">Remove</button>
         <button class="danger" onclick="deleteGame('${appId}')">Reject</button>
       </td>
     `;
     gamesBody.appendChild(row);
   });
 
-  // Banned
+  // Banned IPs
   const bannedBody = document.querySelector('#banned-table tbody');
   bannedBody.innerHTML = '';
   Object.keys(banned).forEach(ip => {
@@ -110,6 +111,22 @@ function render(state) {
     `;
     bannedBody.appendChild(row);
   });
+
+  // Rejected Games (shown in a separate section)
+  const rejectedGames = state.rejected || {};
+  if (Object.keys(rejectedGames).length > 0) {
+    // We'll add them to the banned table for now, or you can create a new table
+    Object.keys(rejectedGames).forEach(appId => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>Game: ${appId}</td>
+        <td>
+          <button onclick="unRejectGame('${appId}')">Add to Games</button>
+        </td>
+      `;
+      bannedBody.appendChild(row);
+    });
+  }
 }
 
 async function banIp(ip) {
@@ -132,11 +149,44 @@ async function unbanIp(ip) {
 }
 
 async function deleteGame(appId) {
-  if (!confirm(`Reject game ${appId}? This will block it.`)) return;
+  if (!confirm(`Reject game ${appId}? This will block it and remove from games list.`)) return;
+
+  // First remove from games
+  await fetch('/api/admin/removegame', {
+    method: 'POST',
+    headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ appId })
+  });
+
+  // Then add to rejected list
   await fetch('/api/admin/reject', {
     method: 'POST',
     headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },
     body: JSON.stringify({ appId })
   });
+
+  loadState();
+}
+
+async function removeGame(appId) {
+  if (!confirm(`Remove game ${appId} from database?`)) return;
+  await fetch('/api/admin/removegame', {
+    method: 'POST',
+    headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ appId })
+  });
+  loadState();
+}
+
+async function unRejectGame(appId) {
+  if (!confirm(`Add game ${appId} back to games?`)) return;
+
+  // Remove from rejected list
+  await fetch('/api/admin/unreject', {
+    method: 'POST',
+    headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ appId })
+  });
+
   loadState();
 }
