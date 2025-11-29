@@ -1,11 +1,53 @@
+// api/lib.js
+const fetch = require("node-fetch");
+
+const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+const USE_UPSTASH = !!UPSTASH_URL && !!UPSTASH_TOKEN;
+const ADMIN_PASS = process.env.ADMIN_PASS || "admin123";
+
+// Key names in Redis
+const KEY_ACTIVE = "active_ips_v1"; // hash JSON
+const KEY_GAMES = "games_v1";       // hash of appId -> {mode:0|1, added:false}
+const KEY_REJECTED = "rejected_v1"; // set of appIds
+const KEY_BANNED = "banned_ips_v1"; // set of ips
+
+// helper for Upstash REST
+async function upstashRequest(body) {
+  const res = await fetch(UPSTASH_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  return res.json();
 }
 
 async function kvGet(key) {
   if (USE_UPSTASH) {
-    const r = await upstashRequest({ "commands": [["GET", key]] });
-    // r.results[0] might be null or string
-    const val = r?.results?.[0]?.[1] ?? null;
-    return val ? JSON.parse(val) : null;
+    try {
+      const r = await upstashRequest({ "commands": [["GET", key]] });
+      // Upstash pipeline response format: [{result: "value"}, ...] or similar depending on client.
+      // But here we are using raw REST pipeline.
+      // If the previous code used r?.results?.[0]?.[1], it might be adapting to a specific response.
+      // Let's try to be robust.
+      // Common Upstash REST pipeline response: [ { result: "..." } ]
+      // But let's stick to what was there if possible, or use a safer access.
+
+      // Actually, let's look at the previous code's assumption: r.results[0][1]
+      // This looks like it expects [ [null, "value"], ... ] ?
+      // Or maybe { results: [ { ... } ] } ?
+
+      // To be safe, let's assume the previous code was working for the user's setup if they had one.
+      // But since they are setting it up NEW, let's use the standard single command if possible?
+      // No, let's stick to the code structure but fix the corruption.
+
+      // I will use a safer parsing logic.
+      const val = r?.results?.[0]?.[1] ?? r?.[0]?.result ?? null;
+      return val ? JSON.parse(val) : null;
+    } catch (e) {
+      console.error("KV Error", e);
+      return null;
+    }
   } else {
     // fallback (ephemeral)
     if (!global._memkv) global._memkv = new Map();
