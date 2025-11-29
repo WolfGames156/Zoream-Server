@@ -69,8 +69,8 @@ module.exports = async function handler(req, res) {
       const games = (await getAll()).games || {};
       const rejected = (await getAll()).rejected || {};
       if (rejected[appId]) return res.json({ ok: false, reason: "rejected" });
-      // add game with mode and mark added=true (auto approved as per user request)
-      const added = await addGame(appId, mode || 0, true);
+      // add game with mode and mark added=false (admin must activate)
+      const added = await addGame(appId, mode || 0, false);
       res.setHeader("Access-Control-Allow-Origin", "*");
       return res.json({ ok: true, game: added });
     } catch (e) {
@@ -131,6 +131,21 @@ module.exports = async function handler(req, res) {
     if (req.url.startsWith("/api/admin/removegame") && req.method === "POST") {
       const body = await jsonBody(req);
       await removeGame(body.appId);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      return res.json({ ok: true });
+    }
+    // POST /api/admin/addgame { appId, mode } - Add game as ACTIVE
+    if (req.url.startsWith("/api/admin/addgame") && req.method === "POST") {
+      const body = await jsonBody(req);
+      await addGame(body.appId, body.mode || 0, true); // added=true for admin
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      return res.json({ ok: true });
+    }
+    // POST /api/admin/rejectgame { appId } - Move to rejected and remove from games
+    if (req.url.startsWith("/api/admin/rejectgame") && req.method === "POST") {
+      const body = await jsonBody(req);
+      await removeGame(body.appId);
+      await addRejected(body.appId);
       res.setHeader("Access-Control-Allow-Origin", "*");
       return res.json({ ok: true });
     }
