@@ -6,11 +6,13 @@ const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_RES
 const USE_UPSTASH = !!UPSTASH_URL && !!UPSTASH_TOKEN;
 const ADMIN_PASS = process.env.ADMIN_PASS || "admin123";
 
+console.log('[Zoream] Upstash configured:', USE_UPSTASH ? 'YES' : 'NO (using memory)');
+
 // Key names in Redis
-const KEY_ACTIVE = "active_ips_v1"; // hash JSON
-const KEY_GAMES = "games_v1";       // hash of appId -> {mode:0|1, added:false}
-const KEY_REJECTED = "rejected_v1"; // set of appIds
-const KEY_BANNED = "banned_ips_v1"; // set of ips
+const KEY_ACTIVE = "active_ips_v1";
+const KEY_GAMES = "games_v1";
+const KEY_REJECTED = "rejected_v1";
+const KEY_BANNED = "banned_ips_v1";
 
 // helper for Upstash REST
 async function upstashRequest(body) {
@@ -26,31 +28,27 @@ async function kvGet(key) {
   if (USE_UPSTASH) {
     try {
       const r = await upstashRequest({ "commands": [["GET", key]] });
+      console.log(`[KV GET] ${key}:`, JSON.stringify(r).substring(0, 200));
 
-      // Upstash REST API response handling
-      // Pipeline: [ { result: "..." } ]
-      // Single Command: { result: "..." }
+      // Upstash pipeline response: [{"result": "value"}]
       let val = null;
-      if (Array.isArray(r)) {
-        val = r[0]?.result; // Pipeline response
-      } else if (r && r.result) {
-        val = r.result; // Single command response
-      } else if (r?.results) {
-        // Legacy or different pipeline format
-        val = r.results[0]?.result || r.results[0];
+      if (Array.isArray(r) && r.length > 0) {
+        val = r[0].result;
       }
 
-      // If result is string, try to parse JSON. If it's already object/null, use as is.
       if (typeof val === 'string') {
-        try { return JSON.parse(val); } catch { return val; }
+        try {
+          return JSON.parse(val);
+        } catch {
+          return val;
+        }
       }
       return val;
     } catch (e) {
-      console.error("KV Error", e);
+      console.error(`[KV Error] GET ${key}:`, e.message);
       return null;
     }
   } else {
-    // fallback (ephemeral)
     if (!global._memkv) global._memkv = new Map();
     const v = global._memkv.get(key);
     return v ? JSON.parse(v) : null;
@@ -59,7 +57,8 @@ async function kvGet(key) {
 
 async function kvSet(key, obj) {
   if (USE_UPSTASH) {
-    await upstashRequest({ "commands": [["SET", key, JSON.stringify(obj)]] });
+    const r = await upstashRequest({ "commands": [["SET", key, JSON.stringify(obj)]] });
+    console.log(`[KV SET] ${key}:`, JSON.stringify(r));
   } else {
     if (!global._memkv) global._memkv = new Map();
     global._memkv.set(key, JSON.stringify(obj));
@@ -74,9 +73,7 @@ async function kvDelete(key) {
   }
 }
 
-// Utilities
 function nowMs() { return Date.now(); }
-
 async function getAdminPass() { return ADMIN_PASS; }
 
 async function getState() {
@@ -87,7 +84,6 @@ async function getState() {
   return { active, games, rejected, banned };
 }
 
-// Called on each incoming request to clean old IPs (>60s inactivity)
 async function cleanupExpired(thresholdSec = 60) {
   const state = await getState();
   const active = state.active || {};
@@ -103,47 +99,41 @@ async function cleanupExpired(thresholdSec = 60) {
   return removed;
 }
 
-// Track IP visit. clientId is a per-machine generated id from frontend.
-// Returns {newIp:bool, activeCount:int, activeIps:[], banned:boolean}
 async function trackVisit(ip, clientId) {
   if (!ip) throw new Error("no ip");
   const state = await getState();
   if (state.banned && state.banned[ip]) return { banned: true };
 
   const active = state.active || {};
-  const entry = active[ip] || { lastSeen: 0, clientIds: {} }; // clientIds map to true
+  const entry = active[ip] || { lastSeen: 0, clientIds: {} };
   const wasPresent = !!active[ip];
 
-  // if this clientId hasn't been seen for this ip, increment clientIds (prevent duplicates per-machine)
   if (clientId) entry.clientIds[clientId] = true;
   entry.lastSeen = nowMs();
   active[ip] = entry;
   await kvSet(KEY_ACTIVE, active);
 
-  // compute active count as number of distinct unique clientIds across IPs (best-effort)
   let uniqueClients = new Set();
   for (const k of Object.keys(active)) {
     const ids = active[k].clientIds || {};
     for (const id of Object.keys(ids)) uniqueClients.add(id);
   }
-  // fallback: if no clientIds were provided by clients, count distinct IPs
   const activeCount = uniqueClients.size || Object.keys(active).length;
 
   return { newIp: !wasPresent, activeCount, activeIps: Object.keys(active), banned: false };
 }
 
-// Admin actions
 async function banIp(ip) {
   const state = await getState();
   const banned = state.banned || {};
   banned[ip] = true;
   await kvSet(KEY_BANNED, banned);
-  // remove from active
   const active = state.active || {};
   delete active[ip];
   await kvSet(KEY_ACTIVE, active);
   return true;
 }
+
 async function unbanIp(ip) {
   const state = await getState();
   const banned = state.banned || {};
@@ -151,24 +141,28 @@ async function unbanIp(ip) {
   await kvSet(KEY_BANNED, banned);
   return true;
 }
+
 async function addRejected(appId) {
   const rej = (await kvGet(KEY_REJECTED)) || {};
   rej[appId] = true;
   await kvSet(KEY_REJECTED, rej);
   return true;
 }
+
 async function removeRejected(appId) {
   const rej = (await kvGet(KEY_REJECTED)) || {};
   delete rej[appId];
   await kvSet(KEY_REJECTED, rej);
   return true;
 }
+
 async function addGame(appId, mode = 0, added = false) {
   const games = (await kvGet(KEY_GAMES)) || {};
   games[appId] = { mode: Number(mode), added: !!added, createdAt: nowMs() };
   await kvSet(KEY_GAMES, games);
   return games[appId];
 }
+
 async function setGameAdded(appId, added) {
   const games = (await kvGet(KEY_GAMES)) || {};
   if (!games[appId]) return null;
@@ -176,6 +170,7 @@ async function setGameAdded(appId, added) {
   await kvSet(KEY_GAMES, games);
   return games[appId];
 }
+
 async function getAll() {
   return await getState();
 }
