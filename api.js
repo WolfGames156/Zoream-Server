@@ -17,10 +17,10 @@ async function callZoreamServer(endpoint = '/', options = {}) {
   // Vercel'deki deployment URL'si — ortam değişkeninden.
   // Electron'dan çağırırken geçilecek URL (example: https://zoream-server.vercel.app)
   const VERCEL_URL = process.env.VERCEL_URL || process.env.NEXT_PUBLIC_VERCEL_URL || 'https://zoream-server.vercel.app';
-  
+
   // Endpoint normalizasyonu
   const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  
+
   // Vercel'deki API endpoint'i
   const url = `${VERCEL_URL.replace(/\/$/, '')}/api${path}`;
 

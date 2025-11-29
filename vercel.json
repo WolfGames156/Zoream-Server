@@ -4,15 +4,5 @@
   "outputDirectory": "public",
   "env": {
     "NODE_VERSION": "20.x"
-  },
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
-  ]
+  }
 }
