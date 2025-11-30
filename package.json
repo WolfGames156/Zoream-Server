@@ -9,6 +9,7 @@
   "dependencies": {
     "@vercel/kv": "1.0.0",
     "cookie": "^0.6.0",
-    "node-fetch": "^2.7.0"
+    "node-fetch": "^2.7.0",
+    "redis": "^4.6.0"
   }
 }
