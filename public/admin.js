@@ -56,7 +56,9 @@ async function loadState() {
 function render(state) {
   const { active, games, banned, rejected, seen } = state;
 
-  document.getElementById('active-count').innerText = Object.keys(active).length;
+  // Show counts excluding banned IPs
+  const activeKeys = Object.keys(active || {}).filter(ip => !banned[ip]);
+  document.getElementById('active-count').innerText = activeKeys.length;
   document.getElementById('games-count').innerText = Object.keys(games).length;
   document.getElementById('banned-count').innerText = Object.keys(banned).length;
 
@@ -64,6 +66,7 @@ function render(state) {
   const usersBody = document.querySelector('#users-table tbody');
   usersBody.innerHTML = '';
   Object.entries(active).forEach(([ip, data]) => {
+    if (banned && banned[ip]) return; // hide banned IPs from active list
     const row = document.createElement('tr');
     const lastSeen = new Date(data.lastSeen).toLocaleTimeString();
     row.innerHTML = `
@@ -137,6 +140,7 @@ function render(state) {
     if (seenBody) {
       seenBody.innerHTML = '';
       Object.entries(seen).forEach(([ip, info]) => {
+        if (banned && banned[ip]) return; // hide banned IPs from seen/history list
         const row = document.createElement('tr');
         const usernames = info.usernames ? Object.keys(info.usernames).join(', ') : '-';
         const firstSeen = info.firstSeen ? new Date(info.firstSeen).toLocaleString() : '-';

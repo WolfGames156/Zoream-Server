@@ -221,7 +221,7 @@ module.exports = async function handler(req, res) {
       return res.json({ ok: true });
     }
     if (req.url.startsWith("/api/admin/rejectgame")) {
-      await removeGame(body.appId);
+      // addRejected will preserve existing game metadata (mode) before removing it
       await addRejected(body.appId);
       return res.json({ ok: true });
     }

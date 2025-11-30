@@ -235,25 +235,33 @@ async function unbanIp(ip) {
 
 async function addRejected(appId) {
   const rej = (await kvGet(KEY_REJECTED)) || {};
-  rej[appId] = true;
-  await kvSet(KEY_REJECTED, rej);
-  // also remove from games library if present
   const games = (await kvGet(KEY_GAMES)) || {};
   if (games[appId]) {
+    // preserve the game object (mode, createdAt, etc.) in rejected map
+    rej[appId] = games[appId];
     delete games[appId];
     await kvSet(KEY_GAMES, games);
+  } else {
+    // store a simple flag if we don't have previous metadata
+    rej[appId] = true;
   }
+  await kvSet(KEY_REJECTED, rej);
   return true;
 }
 
 async function removeRejected(appId) {
   const rej = (await kvGet(KEY_REJECTED)) || {};
+  const prev = rej[appId];
   delete rej[appId];
   await kvSet(KEY_REJECTED, rej);
-  // when un-rejecting, ensure it exists in games as inactive
+  // when un-rejecting, restore previous game metadata if available
   const games = (await kvGet(KEY_GAMES)) || {};
   if (!games[appId]) {
-    games[appId] = { mode: 0, added: false, createdAt: nowMs() };
+    if (prev && typeof prev === 'object' && prev.mode !== undefined) {
+      games[appId] = { mode: Number(prev.mode), added: false, createdAt: nowMs() };
+    } else {
+      games[appId] = { mode: 0, added: false, createdAt: nowMs() };
+    }
     await kvSet(KEY_GAMES, games);
   }
   return true;
