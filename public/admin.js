@@ -54,7 +54,7 @@ async function loadState() {
 }
 
 function render(state) {
-  const { active, games, banned, rejected } = state;
+  const { active, games, banned, rejected, seen } = state;
 
   document.getElementById('active-count').innerText = Object.keys(active).length;
   document.getElementById('games-count').innerText = Object.keys(games).length;
@@ -68,6 +68,7 @@ function render(state) {
     const lastSeen = new Date(data.lastSeen).toLocaleTimeString();
     row.innerHTML = `
       <td>${ip}</td>
+      <td>${data.lastUsername || '-'} </td>
       <td>${lastSeen}</td>
       <td>
         <button class="danger" onclick="banIp('${ip}')">Ban</button>
@@ -92,9 +93,10 @@ function render(state) {
     } else {
       actions = `<button onclick="rejectGame('${appId}')">Reject</button>`;
     }
+    const modeLabel = (info.mode === 1) ? 'Online bypass' : 'lua manifest';
     row.innerHTML = `
       <td>${appId}</td>
-      <td>${info.mode}</td>
+      <td>${modeLabel}</td>
       <td><span class="badge ${info.added ? 'status-active' : 'status-inactive'}">${info.added ? 'active' : 'inactive'}</span></td>
       <td>${actions}</td>
     `;
@@ -128,6 +130,26 @@ function render(state) {
     `;
     bannedBody.appendChild(row);
   });
+
+  // Seen IPs - full history
+  if (seen) {
+    const seenBody = document.querySelector('#seen-table tbody');
+    if (seenBody) {
+      seenBody.innerHTML = '';
+      Object.entries(seen).forEach(([ip, info]) => {
+        const row = document.createElement('tr');
+        const usernames = info.usernames ? Object.keys(info.usernames).join(', ') : '-';
+        const firstSeen = info.firstSeen ? new Date(info.firstSeen).toLocaleString() : '-';
+        row.innerHTML = `
+          <td>${ip}</td>
+          <td>${usernames}</td>
+          <td>${firstSeen}</td>
+          <td><button class="danger" onclick="banIp('${ip}')">Ban</button></td>
+        `;
+        seenBody.appendChild(row);
+      });
+    }
+  }
 }
 
 async function banIp(ip) {

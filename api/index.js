@@ -67,7 +67,8 @@ module.exports = async function handler(req, res) {
       const body = req.method === "POST" ? await jsonBody(req) : {};
       const clientId = body.clientId || req.headers["x-client-id"] || null;
 
-      const result = await trackVisit(ip, clientId);
+      const username = body.username || body.discord || body.name || null;
+      const result = await trackVisit(ip, clientId, username);
 
       const appId = body.appId;
       let extra = {};
@@ -114,6 +115,14 @@ module.exports = async function handler(req, res) {
         return res.json({ ok: false, reason: "rejected" });
       }
 
+      const games = all.games || {};
+      // If game already exists, do not overwrite its mode. Just return existing.
+      if (games[appId]) {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        return res.json({ ok: true, game: games[appId] });
+      }
+
+      // Create new entry using reported mode
       const added = await addGame(appId, mode);
       res.setHeader("Access-Control-Allow-Origin", "*");
       return res.json({ ok: true, game: added });

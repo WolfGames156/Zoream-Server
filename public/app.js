@@ -40,7 +40,8 @@ document.getElementById("checkBtn").addEventListener("click", async () => {
     return;
   }
   if (extra.gameStatus === "known") {
-    resultEl.innerText = `Oyun zaten kayıtlı. Mode: ${JSON.stringify(extra.game)}`;
+    const modeLabel = (extra.game && extra.game.mode === 1) ? 'Online bypass' : 'lua manifest';
+    resultEl.innerText = `Oyun zaten kayıtlı. Mode: ${modeLabel}`;
     return;
   }
   // unknown -> client should determine mode (0 or 1)

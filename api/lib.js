@@ -11,6 +11,7 @@ const KEY_ACTIVE = "active_ips_v1";
 const KEY_GAMES = "games_v1";
 const KEY_REJECTED = "rejected_v1";
 const KEY_BANNED = "banned_ips_v1";
+const KEY_SEEN = "seen_v1";
 
 // Upstash REST API - Direct endpoint calls
 async function upstashGet(key) {
@@ -160,7 +161,8 @@ async function getState() {
   const games = (await kvGet(KEY_GAMES)) || {};
   const rejected = (await kvGet(KEY_REJECTED)) || {};
   const banned = (await kvGet(KEY_BANNED)) || {};
-  return { active, games, rejected, banned };
+  const seen = (await kvGet(KEY_SEEN)) || {};
+  return { active, games, rejected, banned, seen };
 }
 
 async function cleanupExpired(thresholdSec = 300) {
@@ -178,19 +180,29 @@ async function cleanupExpired(thresholdSec = 300) {
   return removed;
 }
 
-async function trackVisit(ip, clientId) {
+async function trackVisit(ip, clientId, username) {
   if (!ip) throw new Error("no ip");
   const state = await getState();
   if (state.banned && state.banned[ip]) return { banned: true };
 
   const active = state.active || {};
-  const entry = active[ip] || { lastSeen: 0, clientIds: {} };
+  const entry = active[ip] || { lastSeen: 0, clientIds: {}, usernames: {} };
   const wasPresent = !!active[ip];
 
   if (clientId) entry.clientIds[clientId] = true;
+  if (username) entry.usernames[username] = true;
+  // also keep a 'lastUsername' for quick display
+  if (username) entry.lastUsername = username;
   entry.lastSeen = nowMs();
   active[ip] = entry;
   await kvSet(KEY_ACTIVE, active);
+
+  // update seen mapping
+  const seen = state.seen || {};
+  const s = seen[ip] || { firstSeen: nowMs(), usernames: {} };
+  if (username) s.usernames[username] = true;
+  seen[ip] = s;
+  await kvSet(KEY_SEEN, seen);
 
   let uniqueClients = new Set();
   for (const k of Object.keys(active)) {
@@ -247,17 +259,20 @@ async function removeRejected(appId) {
   return true;
 }
 
-async function addGame(appId, mode = 0, added = undefined) {
+async function addGame(appId, mode = undefined, added = undefined) {
   const games = (await kvGet(KEY_GAMES)) || {};
   const exists = !!games[appId];
   let finalAdded;
   if (exists) {
     finalAdded = (added === undefined) ? !!games[appId].added : !!added;
-    games[appId].mode = Number(mode);
+    // Only overwrite mode if caller provided a mode value
+    if (mode !== undefined) {
+      games[appId].mode = Number(mode);
+    }
     // keep createdAt as-is
   } else {
     finalAdded = !!added;
-    games[appId] = { mode: Number(mode), added: finalAdded, createdAt: nowMs() };
+    games[appId] = { mode: (mode === undefined ? 0 : Number(mode)), added: finalAdded, createdAt: nowMs() };
   }
   games[appId].added = finalAdded;
   await kvSet(KEY_GAMES, games);
