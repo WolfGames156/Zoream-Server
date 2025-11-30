@@ -1,4 +1,4 @@
-const { trackVisit, cleanupExpired, getAll } = require("./lib.js");
+const { trackVisit, cleanupExpired, getAll, getAdminPass } = require("./lib.js");
 
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -37,6 +37,19 @@ module.exports = async function handler(req, res) {
       }
 
       const count = activeIps.length;
+
+      // determine admin pass from header or query string
+      let isAdmin = false;
+      try {
+        const url = new URL(req.url, `http://${req.headers.host}`);
+        const pass = req.headers["x-admin-pass"] || url.searchParams.get("admin_pass") || "";
+        const correct = await getAdminPass();
+        isAdmin = pass === correct;
+      } catch (e) {
+        isAdmin = false;
+      }
+
+      if (!isAdmin) return res.status(200).json({ ok: true, active: count });
       return res.status(200).json({ ok: true, active: count, activeIps });
     }
 

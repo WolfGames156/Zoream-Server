@@ -70,6 +70,11 @@ module.exports = async function handler(req, res) {
       const username = body.username || body.discord || body.name || null;
       const result = await trackVisit(ip, clientId, username);
 
+      // determine if requester provided admin pass so we can include admin-only fields
+      const passForTrack = body.admin_pass || req.headers["x-admin-pass"] || url.searchParams.get("admin_pass") || "";
+      const correctPass = await getAdminPass();
+      const isAdmin = passForTrack === correctPass;
+
       const appId = body.appId;
       let extra = {};
 
@@ -77,16 +82,18 @@ module.exports = async function handler(req, res) {
         const state = await getAll();
         const games = state.games || {};
         const rejected = state.rejected || {};
-        const index = state.index || {};
 
-        const displayKey = index[appId] || appId;
-
-        if (rejected[appId] || rejected[displayKey]) extra.gameStatus = "rejected";
-        else if (!games[displayKey]) extra.gameStatus = "unknown";
+        if (rejected[appId]) extra.gameStatus = "rejected";
+        else if (!games[appId]) extra.gameStatus = "unknown";
         else {
           extra.gameStatus = "known";
-          extra.game = games[displayKey];
+          extra.game = games[appId];
         }
+      }
+
+      // hide active IPs unless admin
+      if (!isAdmin && result && typeof result === 'object') {
+        delete result.activeIps;
       }
 
       res.setHeader("Access-Control-Allow-Origin", "*");
@@ -113,22 +120,19 @@ module.exports = async function handler(req, res) {
       }
 
       const all = await getAll();
-      const index = all.index || {};
-      const displayKey = index[appId] || appId;
-
-      if (all.rejected?.[appId] || all.rejected?.[displayKey]) {
+      if (all.rejected?.[appId]) {
         res.setHeader("Access-Control-Allow-Origin", "*");
         return res.json({ ok: false, reason: "rejected" });
       }
 
       const games = all.games || {};
-      // If game already exists under displayKey, return existing
-      if (games[displayKey]) {
+      // If game already exists under appId, return existing
+      if (games[appId]) {
         res.setHeader("Access-Control-Allow-Origin", "*");
-        return res.json({ ok: true, game: games[displayKey] });
+        return res.json({ ok: true, game: games[appId] });
       }
 
-      // Create new entry using reported mode (addGame will create displayKey and index)
+      // Create new entry using reported mode
       const added = await addGame(appId, mode);
       res.setHeader("Access-Control-Allow-Origin", "*");
       return res.json({ ok: true, game: added });
