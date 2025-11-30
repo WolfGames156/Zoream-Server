@@ -28,15 +28,19 @@ module.exports = async function handler(req, res) {
       await cleanupExpired(300);
       const state = await getAll();
       const active = state.active || {};
+      const banned = state.banned || {};
+
+      // Filter out banned IPs
+      const activeIps = Object.keys(active).filter(ip => !banned[ip]);
 
       // compute unique clients if available
       const uniqueClients = new Set();
-      for (const ip of Object.keys(active)) {
+      for (const ip of activeIps) {
         const ids = active[ip].clientIds || {};
         for (const id of Object.keys(ids)) uniqueClients.add(id);
       }
-      const count = uniqueClients.size || Object.keys(active).length;
-      return res.status(200).json({ active: count, activeIps: Object.keys(active) });
+      const count = uniqueClients.size || activeIps.length;
+      return res.status(200).json({ active: count, activeIps });
     } catch (e) {
       console.error(e);
       return res.status(500).json({ ok: false, error: e.message });
