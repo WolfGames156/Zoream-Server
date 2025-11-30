@@ -194,35 +194,43 @@ module.exports = async function handler(req, res) {
 
     if (req.url.startsWith("/api/admin/ban")) {
       await banIp(body.ip);
+      if (global._adminStateCache) global._adminStateCache = { ts: 0, data: null };
       return res.json({ ok: true });
     }
     if (req.url.startsWith("/api/admin/unban")) {
       await unbanIp(body.ip);
+      if (global._adminStateCache) global._adminStateCache = { ts: 0, data: null };
       return res.json({ ok: true });
     }
     if (req.url.startsWith("/api/admin/reject")) {
       await addRejected(body.appId);
+      if (global._adminStateCache) global._adminStateCache = { ts: 0, data: null };
       return res.json({ ok: true });
     }
     if (req.url.startsWith("/api/admin/unreject")) {
       await removeRejected(body.appId);
+      if (global._adminStateCache) global._adminStateCache = { ts: 0, data: null };
       return res.json({ ok: true });
     }
     if (req.url.startsWith("/api/admin/setadded")) {
       await setGameAdded(body.appId, !!body.added);
+      if (global._adminStateCache) global._adminStateCache = { ts: 0, data: null };
       return res.json({ ok: true });
     }
     if (req.url.startsWith("/api/admin/removegame")) {
       await removeGame(body.appId);
+      if (global._adminStateCache) global._adminStateCache = { ts: 0, data: null };
       return res.json({ ok: true });
     }
     if (req.url.startsWith("/api/admin/addgame")) {
       await addGame(body.appId, body.mode, true);
+      if (global._adminStateCache) global._adminStateCache = { ts: 0, data: null };
       return res.json({ ok: true });
     }
     if (req.url.startsWith("/api/admin/rejectgame")) {
       // addRejected will preserve existing game metadata (mode) before removing it
       await addRejected(body.appId);
+      if (global._adminStateCache) global._adminStateCache = { ts: 0, data: null };
       return res.json({ ok: true });
     }
 
