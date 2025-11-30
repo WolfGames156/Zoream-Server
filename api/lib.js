@@ -128,12 +128,9 @@ async function trackVisit(ip, clientId, username) {
   const bannedIps = state.banned || {};
   const activeKeys = Object.keys(active).filter(ip => !bannedIps[ip]);
 
-  let uniqueClients = new Set();
-  for (const k of activeKeys) {
-    const ids = active[k].clientIds || {};
-    for (const id of Object.keys(ids)) uniqueClients.add(id);
-  }
-  const activeCount = uniqueClients.size || activeKeys.length;
+
+  const activeCount = activeKeys.length;
+
 
   // Provide legacy `active` field for older clients that expect `active` key
   return { newIp: !wasPresent, activeCount, active: activeCount, activeIps: activeKeys, banned: false };
