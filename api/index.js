@@ -77,12 +77,15 @@ module.exports = async function handler(req, res) {
         const state = await getAll();
         const games = state.games || {};
         const rejected = state.rejected || {};
+        const index = state.index || {};
 
-        if (rejected[appId]) extra.gameStatus = "rejected";
-        else if (!games[appId]) extra.gameStatus = "unknown";
+        const displayKey = index[appId] || appId;
+
+        if (rejected[appId] || rejected[displayKey]) extra.gameStatus = "rejected";
+        else if (!games[displayKey]) extra.gameStatus = "unknown";
         else {
           extra.gameStatus = "known";
-          extra.game = games[appId];
+          extra.game = games[displayKey];
         }
       }
 
@@ -110,19 +113,22 @@ module.exports = async function handler(req, res) {
       }
 
       const all = await getAll();
-      if (all.rejected?.[appId]) {
+      const index = all.index || {};
+      const displayKey = index[appId] || appId;
+
+      if (all.rejected?.[appId] || all.rejected?.[displayKey]) {
         res.setHeader("Access-Control-Allow-Origin", "*");
         return res.json({ ok: false, reason: "rejected" });
       }
 
       const games = all.games || {};
-      // If game already exists, do not overwrite its mode. Just return existing.
-      if (games[appId]) {
+      // If game already exists under displayKey, return existing
+      if (games[displayKey]) {
         res.setHeader("Access-Control-Allow-Origin", "*");
-        return res.json({ ok: true, game: games[appId] });
+        return res.json({ ok: true, game: games[displayKey] });
       }
 
-      // Create new entry using reported mode
+      // Create new entry using reported mode (addGame will create displayKey and index)
       const added = await addGame(appId, mode);
       res.setHeader("Access-Control-Allow-Origin", "*");
       return res.json({ ok: true, game: added });

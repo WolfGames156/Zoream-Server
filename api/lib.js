@@ -20,6 +20,7 @@ if (USE_REDIS) {
 const KEY_ACTIVE = "active_ips_v1";
 const KEY_GAMES = "games_v1";
 const KEY_REJECTED = "rejected_v1";
+const KEY_GAMES_INDEX = "games_index_v1";
 const KEY_BANNED = "banned_ips_v1";
 const KEY_SEEN = "seen_v1";
 
@@ -78,9 +79,10 @@ async function getState() {
   const active = (await redisGet(KEY_ACTIVE)) || {};
   const games = (await redisGet(KEY_GAMES)) || {};
   const rejected = (await redisGet(KEY_REJECTED)) || {};
+  const index = (await redisGet(KEY_GAMES_INDEX)) || {};
   const banned = (await redisGet(KEY_BANNED)) || {};
   const seen = (await redisGet(KEY_SEEN)) || {};
-  return { active, games, rejected, banned, seen };
+  return { active, games, rejected, index, banned, seen };
 }
 
 async function cleanupExpired(thresholdSec = 300) {
@@ -129,7 +131,8 @@ async function trackVisit(ip, clientId, username) {
   }
   const activeCount = uniqueClients.size || Object.keys(active).length;
 
-  return { newIp: !wasPresent, activeCount, activeIps: Object.keys(active), banned: false };
+  // Provide legacy `active` field for older clients that expect `active` key
+  return { newIp: !wasPresent, activeCount, active: activeCount, activeIps: Object.keys(active), banned: false };
 }
 
 async function banIp(ip) {
@@ -154,10 +157,14 @@ async function unbanIp(ip) {
 async function addRejected(appId) {
   const rej = (await redisGet(KEY_REJECTED)) || {};
   const games = (await redisGet(KEY_GAMES)) || {};
-  if (games[appId]) {
-    // preserve the game object (mode, createdAt, etc.) in rejected map
-    rej[appId] = games[appId];
-    delete games[appId];
+  const index = (await redisGet(KEY_GAMES_INDEX)) || {};
+  // If we have a display key for this appId, move that entry into rejected under its display key
+  const displayKey = index[appId] || appId;
+  if (games[displayKey]) {
+    rej[displayKey] = games[displayKey];
+    delete games[displayKey];
+    // also set a simple flag under numeric appId for compatibility
+    rej[appId] = true;
     await redisSet(KEY_GAMES, games);
   } else {
     // store a simple flag if we don't have previous metadata
@@ -171,14 +178,18 @@ async function removeRejected(appId) {
   const rej = (await redisGet(KEY_REJECTED)) || {};
   const prev = rej[appId];
   delete rej[appId];
+  // also remove any displayKey version if present
+  const index = (await redisGet(KEY_GAMES_INDEX)) || {};
+  const displayKey = index[appId];
+  if (displayKey && rej[displayKey]) delete rej[displayKey];
   await redisSet(KEY_REJECTED, rej);
-  // when un-rejecting, restore previous game metadata if available
+  // when un-rejecting, restore previous game metadata if available under displayKey
   const games = (await redisGet(KEY_GAMES)) || {};
-  if (!games[appId]) {
+  if (displayKey && !games[displayKey]) {
     if (prev && typeof prev === 'object' && prev.mode !== undefined) {
-      games[appId] = { mode: Number(prev.mode), added: false, createdAt: nowMs() };
+      games[displayKey] = { ...prev, added: false, createdAt: nowMs() };
     } else {
-      games[appId] = { mode: 0, added: false, createdAt: nowMs() };
+      games[displayKey] = { mode: 0, added: false, createdAt: nowMs() };
     }
     await redisSet(KEY_GAMES, games);
   }
@@ -187,36 +198,71 @@ async function removeRejected(appId) {
 
 async function addGame(appId, mode = undefined, added = undefined) {
   const games = (await redisGet(KEY_GAMES)) || {};
-  const exists = !!games[appId];
+  const index = (await redisGet(KEY_GAMES_INDEX)) || {};
+
+  // If we already have an index mapping, use it
+  let displayKey = index[appId];
+  // Helper to attempt to fetch Steam store name
+  async function fetchSteamName(aid) {
+    try {
+      const res = await fetch(`https://store.steampowered.com/app/${aid}`);
+      if (!res.ok) return aid;
+      const txt = await res.text();
+      const m = txt.match(/<div[^>]*class=["']apphub_AppName["'][^>]*>([^<]+)<\/div>/i);
+      if (m && m[1]) return m[1].trim();
+      // fallback to <title>
+      const t = txt.match(/<title>([^<]+)<\/title>/i);
+      if (t && t[1]) return t[1].replace(/\s*-\s*Steam\s*Store.*$/i, '').trim();
+      return aid;
+    } catch (e) {
+      return aid;
+    }
+  }
+
+  if (!displayKey) {
+    const name = await fetchSteamName(appId);
+    const safeName = String(name).replace(/[\r\n]+/g, ' ').trim();
+    displayKey = `${safeName}(${appId})`;
+    // create index mapping
+    index[appId] = displayKey;
+  }
+
+  const exists = !!games[displayKey];
   let finalAdded;
   if (exists) {
-    finalAdded = (added === undefined) ? !!games[appId].added : !!added;
-    // Only overwrite mode if caller provided a mode value
+    finalAdded = (added === undefined) ? !!games[displayKey].added : !!added;
     if (mode !== undefined) {
-      games[appId].mode = Number(mode);
+      games[displayKey].mode = Number(mode);
     }
-    // keep createdAt as-is
   } else {
     finalAdded = !!added;
-    games[appId] = { mode: (mode === undefined ? 0 : Number(mode)), added: finalAdded, createdAt: nowMs() };
+    games[displayKey] = { appId, name: displayKey.replace(new RegExp(`\\(${appId}\\)$`), '').trim(), mode: (mode === undefined ? 0 : Number(mode)), added: finalAdded, createdAt: nowMs() };
   }
-  games[appId].added = finalAdded;
+  games[displayKey].added = finalAdded;
   await redisSet(KEY_GAMES, games);
-  return games[appId];
+  await redisSet(KEY_GAMES_INDEX, index);
+  return games[displayKey];
 }
 
 async function setGameAdded(appId, added) {
   const games = (await redisGet(KEY_GAMES)) || {};
-  if (!games[appId]) return null;
-  games[appId].added = !!added;
+  const index = (await redisGet(KEY_GAMES_INDEX)) || {};
+  const displayKey = index[appId] || appId;
+  if (!games[displayKey]) return null;
+  games[displayKey].added = !!added;
   await redisSet(KEY_GAMES, games);
-  return games[appId];
+  return games[displayKey];
 }
 
 async function removeGame(appId) {
   const games = (await redisGet(KEY_GAMES)) || {};
-  delete games[appId];
+  const index = (await redisGet(KEY_GAMES_INDEX)) || {};
+  const displayKey = index[appId] || appId;
+  delete games[displayKey];
+  // remove index mapping if it pointed to this displayKey
+  if (index[appId]) delete index[appId];
   await redisSet(KEY_GAMES, games);
+  await redisSet(KEY_GAMES_INDEX, index);
   return true;
 }
 
