@@ -58,20 +58,25 @@ function render(state) {
 
   // Show counts excluding banned IPs
   const activeKeys = Object.keys(active || {}).filter(ip => !banned[ip]);
+
   document.getElementById('active-count').innerText = activeKeys.length;
   document.getElementById('games-count').innerText = Object.keys(games).length;
   document.getElementById('banned-count').innerText = Object.keys(banned).length;
+
+  // ✅ Yeni sayaçlar:
+  document.getElementById('seen-count').innerText = Object.keys(seen || {}).length;
+  document.getElementById('rejected-count').innerText = Object.keys(rejected || {}).length;
 
   // Active Users
   const usersBody = document.querySelector('#users-table tbody');
   usersBody.innerHTML = '';
   Object.entries(active).forEach(([ip, data]) => {
-    if (banned && banned[ip]) return; // hide banned IPs from active list
+    if (banned && banned[ip]) return;
     const row = document.createElement('tr');
     const lastSeen = new Date(data.lastSeen).toLocaleTimeString();
     row.innerHTML = `
       <td>${ip}</td>
-      <td>${data.lastUsername || '-'} </td>
+      <td>${data.lastUsername || '-'}</td>
       <td>${lastSeen}</td>
       <td>
         <button class="danger" onclick="banIp('${ip}')">Ban</button>
@@ -86,7 +91,7 @@ function render(state) {
   Object.entries(games).forEach(([appId, info]) => {
     const row = document.createElement('tr');
     const status = info.added ? 'active' : 'inactive';
-    // If inactive: show Add and Reject. If active: show Reject only.
+
     let actions = '';
     if (!info.added) {
       actions = `
@@ -96,7 +101,9 @@ function render(state) {
     } else {
       actions = `<button onclick="rejectGame('${appId}')">Reject</button>`;
     }
+
     const modeLabel = (info.mode === 1) ? 'Online bypass' : 'lua manifest';
+
     row.innerHTML = `
       <td>${appId}</td>
       <td>${modeLabel}</td>
@@ -113,9 +120,7 @@ function render(state) {
     const row = document.createElement('tr');
     row.innerHTML = `
       <td>${appId}</td>
-      <td>
-        <button onclick="unRejectGame('${appId}')">Remove</button>
-      </td>
+      <td><button onclick="unRejectGame('${appId}')">Remove</button></td>
     `;
     rejectedBody.appendChild(row);
   });
@@ -127,20 +132,18 @@ function render(state) {
     const row = document.createElement('tr');
     row.innerHTML = `
       <td>${ip}</td>
-      <td>
-        <button onclick="unbanIp('${ip}')">Unban</button>
-      </td>
+      <td><button onclick="unbanIp('${ip}')">Unban</button></td>
     `;
     bannedBody.appendChild(row);
   });
 
-  // Seen IPs - full history
+  // Seen IPs
   if (seen) {
     const seenBody = document.querySelector('#seen-table tbody');
     if (seenBody) {
       seenBody.innerHTML = '';
       Object.entries(seen).forEach(([ip, info]) => {
-        if (banned && banned[ip]) return; // hide banned IPs from seen/history list
+        if (banned && banned[ip]) return;
         const row = document.createElement('tr');
         const usernames = info.usernames ? Object.keys(info.usernames).join(', ') : '-';
         const firstSeen = info.firstSeen ? new Date(info.firstSeen).toLocaleString() : '-';
@@ -198,18 +201,15 @@ async function unRejectGame(appId) {
 function showAddGameDialog() {
   const appId = prompt('Enter Steam App ID:');
   if (!appId) return;
-  // Do not ask for mode here; activating/adding will preserve existing mode or use default
   addGame(appId);
 }
 
 function showAddGameConfirm(appId) {
-  // Confirm activation for an existing appId; do not ask mode
   if (!confirm(`Add game ${appId} as active?`)) return;
   addGame(appId);
 }
 
-async function addGame(appId, mode) {
-  // Send only appId; don't force mode on server (it will preserve existing mode)
+async function addGame(appId) {
   await fetch('/api/admin/addgame', {
     method: 'POST',
     headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },
