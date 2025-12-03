@@ -54,7 +54,7 @@ async function loadState() {
 }
 
 function render(state) {
-  const { active, games, banned, rejected, seen } = state;
+  const { active, games, banned, rejected, seen, names } = state;
 
   // Show counts excluding banned IPs
   const activeKeys = Object.keys(active || {}).filter(ip => !banned[ip]);
@@ -103,9 +103,10 @@ function render(state) {
     }
 
     const modeLabel = (info.mode === 1) ? 'Online bypass' : 'lua manifest';
+    const name = names && names[appId] ? `${names[appId]} (${appId})` : appId;
 
     row.innerHTML = `
-      <td>${appId}</td>
+      <td>${name}</td>
       <td>${modeLabel}</td>
       <td><span class="badge ${info.added ? 'status-active' : 'status-inactive'}">${info.added ? 'active' : 'inactive'}</span></td>
       <td>${actions}</td>
@@ -118,8 +119,9 @@ function render(state) {
   rejectedBody.innerHTML = '';
   Object.keys(rejected || {}).forEach(appId => {
     const row = document.createElement('tr');
+    const name = names && names[appId] ? `${names[appId]} (${appId})` : appId;
     row.innerHTML = `
-      <td>${appId}</td>
+      <td>${name}</td>
       <td><button onclick="unRejectGame('${appId}')">Remove</button></td>
     `;
     rejectedBody.appendChild(row);

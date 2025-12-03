@@ -1,4 +1,5 @@
 const redis = require("redis");
+const https = require("https");
 
 const REDIS_URL = process.env.REDIS_URL;
 const USE_REDIS = !!REDIS_URL;
@@ -21,6 +22,7 @@ const KEY_GAMES = "games_v1";
 const KEY_REJECTED = "rejected_v1";
 const KEY_BANNED = "banned_ips_v1";
 const KEY_SEEN = "seen_v1";
+const KEY_NAMES = "names_v1";
 
 // Redis helper functions
 async function redisGet(key) {
@@ -73,13 +75,73 @@ function deepEqual(a, b) {
 function nowMs() { return Date.now(); }
 async function getAdminPass() { return ADMIN_PASS; }
 
+// --- Steam Name Fetching ---
+function fetchSteamName(appId) {
+  return new Promise((resolve) => {
+    const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&filters=basic`;
+    https.get(url, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json && json[appId] && json[appId].success && json[appId].data) {
+            resolve(json[appId].data.name);
+          } else {
+            resolve(null);
+          }
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    }).on('error', () => resolve(null));
+  });
+}
+
+const _fetching = new Set();
+async function fetchMissingNames(missing) {
+  const toFetch = missing.filter(id => !_fetching.has(id));
+  if (toFetch.length === 0) return;
+
+  toFetch.forEach(id => _fetching.add(id));
+
+  // Run in background
+  (async () => {
+    let updates = {};
+    for (const id of toFetch) {
+      await new Promise(r => setTimeout(r, 500)); // 500ms delay to be nice to Steam
+      const name = await fetchSteamName(id);
+      if (name) updates[id] = name;
+      _fetching.delete(id);
+    }
+
+    if (Object.keys(updates).length > 0) {
+      const current = (await redisGet(KEY_NAMES)) || {};
+      Object.assign(current, updates);
+      await redisSet(KEY_NAMES, current);
+    }
+  })();
+}
+
 async function getState() {
   const active = (await redisGet(KEY_ACTIVE)) || {};
   const games = (await redisGet(KEY_GAMES)) || {};
   const rejected = (await redisGet(KEY_REJECTED)) || {};
   const banned = (await redisGet(KEY_BANNED)) || {};
   const seen = (await redisGet(KEY_SEEN)) || {};
-  return { active, games, rejected, banned, seen };
+  const names = (await redisGet(KEY_NAMES)) || {};
+
+  // Check for missing names
+  const allIds = new Set([...Object.keys(games), ...Object.keys(rejected)]);
+  const missing = [];
+  for (const id of allIds) {
+    if (!names[id]) missing.push(id);
+  }
+  if (missing.length > 0) {
+    fetchMissingNames(missing).catch(e => console.error("Bg fetch error:", e));
+  }
+
+  return { active, games, rejected, banned, seen, names };
 }
 
 async function cleanupExpired(thresholdSec = 300) {
