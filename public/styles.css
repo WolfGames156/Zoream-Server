@@ -287,10 +287,10 @@ input:focus {
 }
 
 .collapsible-content {
-  max-height: none;
+  max-height: 999999px;
   overflow: auto;
   opacity: 1;
-  transition: opacity 0.3s ease, margin-top 0.3s ease;
+  transition: max-height 0.4s ease, opacity 0.3s ease, margin-top 0.3s ease;
   margin-top: 1rem;
 }
 
