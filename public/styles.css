@@ -136,6 +136,9 @@ th {
 td {
   color: var(--text-color);
   font-size: 0.95rem;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 300px;
 }
 
 tr:last-child td {
@@ -284,10 +287,10 @@ input:focus {
 }
 
 .collapsible-content {
-  max-height: 2000px;
-  overflow: hidden;
+  max-height: none;
+  overflow: auto;
   opacity: 1;
-  transition: max-height 0.4s ease, opacity 0.3s ease, margin-top 0.3s ease;
+  transition: opacity 0.3s ease, margin-top 0.3s ease;
   margin-top: 1rem;
 }
 
