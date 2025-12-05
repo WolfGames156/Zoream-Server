@@ -298,7 +298,47 @@ async function getAll() {
   return await getState();
 }
 
+async function getRedisInfo() {
+  if (!redisClient || !USE_REDIS) {
+    return null;
+  }
+  try {
+    const info = await redisClient.info('memory');
+    // Parse the INFO response
+    const lines = info.split('\r\n');
+    let usedMemory = 0;
+    let maxMemory = 0;
+
+    for (const line of lines) {
+      if (line.startsWith('used_memory:')) {
+        usedMemory = parseInt(line.split(':')[1]);
+      }
+      if (line.startsWith('maxmemory:')) {
+        maxMemory = parseInt(line.split(':')[1]);
+      }
+    }
+
+    return {
+      usedStorage: usedMemory,
+      maxStorage: maxMemory,
+      usedStorageHuman: formatBytes(usedMemory),
+      maxStorageHuman: maxMemory > 0 ? formatBytes(maxMemory) : 'unlimited'
+    };
+  } catch (e) {
+    console.error('[Redis] Failed to get info:', e.message);
+    return null;
+  }
+}
+
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+}
+
 module.exports = {
   trackVisit, cleanupExpired, getAll, banIp, unbanIp,
-  addRejected, removeRejected, addGame, removeGame, getAdminPass
+  addRejected, removeRejected, addGame, removeGame, getAdminPass, getRedisInfo
 };

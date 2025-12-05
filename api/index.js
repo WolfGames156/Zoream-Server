@@ -1,7 +1,7 @@
 const {
   trackVisit, cleanupExpired, getAll, banIp, unbanIp,
   addRejected, removeRejected, addGame,
-  removeGame, getAdminPass
+  removeGame, getAdminPass, getRedisInfo
 } = require("./lib.js");
 
 // ---- HELPERS ----
@@ -183,11 +183,18 @@ module.exports = async function handler(req, res) {
 
       try {
         const state = await getAll();
-        global._adminStateCache = { ts: Date.now(), data: state };
+        const redisInfo = await getRedisInfo();
+
+        const response = { ...state };
+        if (redisInfo) {
+          response.redisInfo = redisInfo;
+        }
+
+        global._adminStateCache = { ts: Date.now(), data: response };
         global._adminLastReq[ip] = nowReq;
 
         res.setHeader("Access-Control-Allow-Origin", "*");
-        return res.json({ ok: true, state });
+        return res.json({ ok: true, state: response });
 
       } catch (e) {
         if (global._adminStateCache.data) {

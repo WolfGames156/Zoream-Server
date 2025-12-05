@@ -110,7 +110,7 @@ async function loadState() {
 }
 
 function render(state) {
-  const { active, games, banned, rejected, seen, names } = state;
+  const { active, games, banned, rejected, seen, names, redisInfo } = state;
 
   // Show counts excluding banned IPs
   const activeKeys = Object.keys(active || {}).filter(ip => !banned[ip]);
@@ -122,6 +122,14 @@ function render(state) {
   // ✅ Yeni sayaçlar:
   document.getElementById('seen-count').innerText = Object.keys(seen || {}).length;
   document.getElementById('rejected-count').innerText = Object.keys(rejected || {}).length;
+
+  // Redis storage
+  if (redisInfo && redisInfo.usedStorageHuman) {
+    const card = document.getElementById('redis-usage-card');
+    const usage = document.getElementById('redis-usage');
+    card.style.display = 'flex';
+    usage.innerText = `${redisInfo.usedStorageHuman} / ${redisInfo.maxStorageHuman}`;
+  }
 
   // Active Users
   const usersBody = document.querySelector('#users-table tbody');
