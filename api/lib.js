@@ -228,6 +228,14 @@ async function addRejected(appId) {
     rej[appId] = true;
   }
   await redisSet(KEY_REJECTED, rej);
+
+  // Clean up game name from storage
+  const names = (await redisGet(KEY_NAMES)) || {};
+  if (names[appId]) {
+    delete names[appId];
+    await redisSet(KEY_NAMES, names);
+  }
+
   return true;
 }
 
@@ -235,47 +243,54 @@ async function removeRejected(appId) {
   const rej = (await redisGet(KEY_REJECTED)) || {};
   const prev = rej[appId];
   delete rej[appId];
-  // nothing else to remove; we store by appId only
   await redisSet(KEY_REJECTED, rej);
+
+  // Clean up game name from storage
+  const names = (await redisGet(KEY_NAMES)) || {};
+  if (names[appId]) {
+    delete names[appId];
+    await redisSet(KEY_NAMES, names);
+  }
+
   // when un-rejecting, restore previous game metadata if available
   const games = (await redisGet(KEY_GAMES)) || {};
   if (prev && typeof prev === 'object' && !games[appId]) {
-    games[appId] = { ...prev, added: false, createdAt: nowMs() };
+    games[appId] = { ...prev, createdAt: nowMs() };
     await redisSet(KEY_GAMES, games);
   }
   return true;
 }
 
-async function addGame(appId, mode = undefined, added = undefined) {
+async function addGame(appId, mode = undefined) {
+  // "Add game" now means remove it from the list (similar to removeGame)
   const games = (await redisGet(KEY_GAMES)) || {};
-  const exists = !!games[appId];
-  let finalAdded;
-  if (exists) {
-    finalAdded = (added === undefined) ? !!games[appId].added : !!added;
-    if (mode !== undefined) {
-      games[appId].mode = Number(mode);
-    }
-  } else {
-    finalAdded = !!added;
-    games[appId] = { appId, mode: (mode === undefined ? 0 : Number(mode)), added: finalAdded, createdAt: nowMs() };
-  }
-  games[appId].added = finalAdded;
+  delete games[appId];
   await redisSet(KEY_GAMES, games);
-  return games[appId];
+
+  // Clean up game name from storage
+  const names = (await redisGet(KEY_NAMES)) || {};
+  if (names[appId]) {
+    delete names[appId];
+    await redisSet(KEY_NAMES, names);
+  }
+
+  return { removed: true };
 }
 
-async function setGameAdded(appId, added) {
-  const games = (await redisGet(KEY_GAMES)) || {};
-  if (!games[appId]) return null;
-  games[appId].added = !!added;
-  await redisSet(KEY_GAMES, games);
-  return games[appId];
-}
+// setGameAdded is no longer needed since we removed the added field
 
 async function removeGame(appId) {
   const games = (await redisGet(KEY_GAMES)) || {};
   delete games[appId];
   await redisSet(KEY_GAMES, games);
+
+  // Clean up game name from storage
+  const names = (await redisGet(KEY_NAMES)) || {};
+  if (names[appId]) {
+    delete names[appId];
+    await redisSet(KEY_NAMES, names);
+  }
+
   return true;
 }
 
@@ -285,5 +300,5 @@ async function getAll() {
 
 module.exports = {
   trackVisit, cleanupExpired, getAll, banIp, unbanIp,
-  addRejected, removeRejected, addGame, setGameAdded, removeGame, getAdminPass
+  addRejected, removeRejected, addGame, removeGame, getAdminPass
 };

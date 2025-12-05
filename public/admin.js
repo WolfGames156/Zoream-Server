@@ -1,5 +1,54 @@
 let adminPass = localStorage.getItem('zoream_admin_pass') || '';
 
+// Collapse state management
+const collapseSections = ['active-users', 'game-library', 'rejected-games', 'seen-ips', 'banned-ips'];
+let collapseState = {};
+
+function loadCollapseState() {
+  const saved = localStorage.getItem('zoream_collapse_state');
+  if (saved) {
+    try {
+      collapseState = JSON.parse(saved);
+    } catch (e) {
+      collapseState = {};
+    }
+  }
+  // Apply saved state
+  collapseSections.forEach(section => {
+    if (collapseState[section] === true) {
+      const content = document.getElementById(`content-${section}`);
+      const arrow = document.getElementById(`toggle-${section}`);
+      if (content) content.classList.add('collapsed');
+      if (arrow) arrow.textContent = '▶';
+    }
+  });
+}
+
+function saveCollapseState() {
+  localStorage.setItem('zoream_collapse_state', JSON.stringify(collapseState));
+}
+
+function toggleSection(section) {
+  const content = document.getElementById(`content-${section}`);
+  const arrow = document.getElementById(`toggle-${section}`);
+
+  if (!content || !arrow) return;
+
+  const isCollapsed = content.classList.contains('collapsed');
+
+  if (isCollapsed) {
+    content.classList.remove('collapsed');
+    arrow.textContent = '▼';
+    collapseState[section] = false;
+  } else {
+    content.classList.add('collapsed');
+    arrow.textContent = '▶';
+    collapseState[section] = true;
+  }
+
+  saveCollapseState();
+}
+
 async function attemptLogin() {
   const input = document.getElementById('admin-pass');
   const pass = input.value;
@@ -33,6 +82,13 @@ function logout() {
 if (adminPass) {
   document.getElementById('admin-pass').value = adminPass;
   attemptLogin();
+}
+
+// Load collapse state on page load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', loadCollapseState);
+} else {
+  loadCollapseState();
 }
 
 async function loadState() {
@@ -90,17 +146,6 @@ function render(state) {
   gamesBody.innerHTML = '';
   Object.entries(games).forEach(([appId, info]) => {
     const row = document.createElement('tr');
-    const status = info.added ? 'active' : 'inactive';
-
-    let actions = '';
-    if (!info.added) {
-      actions = `
-        <button onclick="showAddGameConfirm('${appId}')">Add</button>
-        <button onclick="rejectGame('${appId}')">Reject</button>
-      `;
-    } else {
-      actions = `<button onclick="rejectGame('${appId}')">Reject</button>`;
-    }
 
     const modeLabel = (info.mode === 1) ? 'Online bypass' : 'lua manifest';
     const name = names && names[appId] ? `${names[appId]} (${appId})` : appId;
@@ -108,8 +153,10 @@ function render(state) {
     row.innerHTML = `
       <td>${name}</td>
       <td>${modeLabel}</td>
-      <td><span class="badge ${info.added ? 'status-active' : 'status-inactive'}">${info.added ? 'active' : 'inactive'}</span></td>
-      <td>${actions}</td>
+      <td>
+        <button onclick="addGame('${appId}')">Add</button>
+        <button onclick="rejectGame('${appId}')">Reject</button>
+      </td>
     `;
     gamesBody.appendChild(row);
   });
@@ -206,12 +253,8 @@ function showAddGameDialog() {
   addGame(appId);
 }
 
-function showAddGameConfirm(appId) {
-  if (!confirm(`Add game ${appId} as active?`)) return;
-  addGame(appId);
-}
-
 async function addGame(appId) {
+  if (!confirm(`Add game ${appId}? This will remove it from the list.`)) return;
   await fetch('/api/admin/addgame', {
     method: 'POST',
     headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },

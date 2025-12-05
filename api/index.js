@@ -1,6 +1,6 @@
 const {
   trackVisit, cleanupExpired, getAll, banIp, unbanIp,
-  addRejected, removeRejected, addGame, setGameAdded,
+  addRejected, removeRejected, addGame,
   removeGame, getAdminPass
 } = require("./lib.js");
 
@@ -222,18 +222,13 @@ module.exports = async function handler(req, res) {
       if (global._adminStateCache) global._adminStateCache = { ts: 0, data: null };
       return res.json({ ok: true });
     }
-    if (req.url.startsWith("/api/admin/setadded")) {
-      await setGameAdded(body.appId, !!body.added);
-      if (global._adminStateCache) global._adminStateCache = { ts: 0, data: null };
-      return res.json({ ok: true });
-    }
     if (req.url.startsWith("/api/admin/removegame")) {
       await removeGame(body.appId);
       if (global._adminStateCache) global._adminStateCache = { ts: 0, data: null };
       return res.json({ ok: true });
     }
     if (req.url.startsWith("/api/admin/addgame")) {
-      await addGame(body.appId, body.mode, true);
+      await addGame(body.appId, body.mode);
       if (global._adminStateCache) global._adminStateCache = { ts: 0, data: null };
       return res.json({ ok: true });
     }
