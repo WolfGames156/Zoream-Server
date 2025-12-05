@@ -118,17 +118,15 @@ function render(state) {
   document.getElementById('active-count').innerText = activeKeys.length;
   document.getElementById('games-count').innerText = Object.keys(games).length;
   document.getElementById('banned-count').innerText = Object.keys(banned).length;
-
-  // ✅ Yeni sayaçlar:
   document.getElementById('seen-count').innerText = Object.keys(seen || {}).length;
   document.getElementById('rejected-count').innerText = Object.keys(rejected || {}).length;
 
-  // Redis storage
+  // Redis storage - only show used storage
   if (redisInfo && redisInfo.usedStorageHuman) {
     const card = document.getElementById('redis-usage-card');
     const usage = document.getElementById('redis-usage');
     card.style.display = 'flex';
-    usage.innerText = `${redisInfo.usedStorageHuman} / ${redisInfo.maxStorageHuman}`;
+    usage.innerText = redisInfo.usedStorageHuman;
   }
 
   // Active Users
