@@ -27,7 +27,7 @@
       // Fetch and display server status from stat.txt
       async function updateServerStatus() {
         try {
-          const response = await fetch('../stat.txt');
+          const response = await fetch('stat.txt');
           const status = (await response.text()).trim().toLowerCase();
 
           const statusBadge = document.getElementById('server-status');
