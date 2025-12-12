@@ -148,6 +148,7 @@ function render(state) {
     const card = document.getElementById('redis-usage-card');
     const usage = document.getElementById('redis-usage');
     card.style.display = 'flex';
+    // Just show the used amount, no max
     usage.innerText = redisInfo.usedStorageHuman;
   }
 

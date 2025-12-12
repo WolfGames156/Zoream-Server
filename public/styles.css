@@ -273,6 +273,49 @@ input:focus {
   padding: 1rem;
 }
 
+/* Active / Inactive status badges */
+/* Badges */
+.badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  /* Fully rounded pill shape */
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: inline-block;
+  backdrop-filter: blur(4px);
+}
+
+/* Status variants */
+.status-active,
+.badge.success {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.1);
+}
+
+.status-inactive,
+.badge.status-inactive {
+  background: rgba(148, 163, 184, 0.1);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.badge.warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.badge.danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.1);
+}
+
 /* Utility / Toggle */
 .toggle-arrow {
   color: var(--text-muted);
@@ -280,15 +323,15 @@ input:focus {
 }
 
 .collapsible-content {
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  max-height: 2000px;
-  /* arbitrary large value */
+  /* Use display instead of max-height to avoid cutting off content */
+  display: block;
   opacity: 1;
-  overflow: hidden;
+  transition: opacity 0.3s ease;
+  margin-top: 1rem;
 }
 
 .collapsible-content.collapsed {
-  max-height: 0;
+  display: none;
   opacity: 0;
   margin: 0;
 }
