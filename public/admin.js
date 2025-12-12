@@ -157,13 +157,37 @@ function render(state) {
   Object.entries(active).forEach(([ip, data]) => {
     if (banned && banned[ip]) return;
     const row = document.createElement('tr');
+
+    // Collect all usernames for this active session
+    const usernames = data.usernames ? Object.keys(data.usernames) : [];
+    if (data.lastUsername && !usernames.includes(data.lastUsername)) {
+      usernames.push(data.lastUsername);
+    }
+    const usernameDisplay = usernames.length > 0 ? usernames.join(', ') : '-';
+
+    // Gather all linked IPs for these usernames from the global userMap
+    let linkedIps = new Set([ip]);
+    usernames.forEach(u => {
+      if (userMap[u] && userMap[u].ips) {
+        userMap[u].ips.forEach(i => linkedIps.add(i));
+      }
+    });
+    const ipList = Array.from(linkedIps);
+    const ipListAttr = JSON.stringify(ipList).replace(/"/g, '&quot;');
     const lastSeen = new Date(data.lastSeen).toLocaleTimeString();
+
+    // Decision: If we have usernames, use the Multi-IP ban function
+    let banAction = `banIp('${ip}')`;
+    if (usernames.length > 0) {
+      banAction = `banUser('${usernames[0]}', ${ipListAttr})`;
+    }
+
     row.innerHTML = `
       <td>${ip}</td>
-      <td>${data.lastUsername || '-'}</td>
+      <td>${usernameDisplay}</td>
       <td>${lastSeen}</td>
       <td>
-        <button class="danger" onclick="banIp('${ip}')">Ban</button>
+        <button class="danger" onclick="${banAction}">Ban</button>
       </td>
     `;
     usersBody.appendChild(row);
@@ -226,8 +250,15 @@ function render(state) {
       const ipListAttr = JSON.stringify(Array.from(data.ips)).replace(/"/g, '&quot;');
       const firstSeen = (data.firstSeen !== Infinity) ? new Date(data.firstSeen).toLocaleString() : '-';
 
+      // Check online status: user is online if ANY of their IPs are in the 'active' list
+      const isOnline = Array.from(data.ips).some(ip => active && active[ip]);
+      const statusBadge = isOnline
+        ? '<span class="badge success">Online</span>'
+        : '<span class="badge status-inactive">Offline</span>';
+
       row.innerHTML = `
         <td>${username}</td>
+        <td>${statusBadge}</td>
         <td>${ips}</td>
         <td>${firstSeen}</td>
         <td><button class="danger" onclick="banUser('${username}', ${ipListAttr})">Ban User</button></td>
@@ -239,8 +270,15 @@ function render(state) {
     anonIps.forEach(item => {
       const row = document.createElement('tr');
       const firstSeen = item.firstSeen ? new Date(item.firstSeen).toLocaleString() : '-';
+
+      const isOnline = active && active[item.ip];
+      const statusBadge = isOnline
+        ? '<span class="badge success">Online</span>'
+        : '<span class="badge status-inactive">Offline</span>';
+
       row.innerHTML = `
         <td>-</td>
+        <td>${statusBadge}</td>
         <td>${item.ip}</td>
         <td>${firstSeen}</td>
         <td><button class="danger" onclick="banIp('${item.ip}')">Ban</button></td>
