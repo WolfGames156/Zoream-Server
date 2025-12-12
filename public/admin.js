@@ -135,12 +135,17 @@ function render(state) {
     });
   }
 
-  const userCount = Object.keys(userMap).length + anonIps.length;
+  // User Count = unique usernames only
+  const totalUsernames = Object.keys(userMap).length;
 
-  document.getElementById('active-count').innerText = Object.keys(active || {}).filter(ip => !banned[ip]).length;
+  // Total Valid IPs (excluding banned)
+  const totalIps = seen ? Object.keys(seen).filter(ip => !(banned && banned[ip])).length : 0;
+
+  document.getElementById('active-count').innerText = Object.keys(active || {}).filter(ip => !(banned && banned[ip])).length;
   document.getElementById('games-count').innerText = Object.keys(games).length;
-  document.getElementById('banned-count').innerText = Object.keys(banned).length;
-  document.getElementById('seen-count').innerText = userCount;
+  document.getElementById('banned-count').innerText = Object.keys(banned || {}).length;
+  document.getElementById('seen-count').innerText = totalUsernames;
+  document.getElementById('seen-ips-count').innerText = totalIps;
   document.getElementById('rejected-count').innerText = Object.keys(rejected || {}).length;
 
   // Redis storage - only show used storage
