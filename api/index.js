@@ -160,6 +160,8 @@ module.exports = async function handler(req, res) {
     }
 
     // ---- STATE (cached) ----
+    const body = req.method === "POST" ? await jsonBody(req) : {};
+
     if (req.url.startsWith("/api/admin/state")) {
       const CACHE_SEC = Number(process.env.ADMIN_STATE_CACHE_SEC) || 5;
       const MIN_REQ_MS = Number(process.env.ADMIN_MIN_REQUEST_INTERVAL_MS) || 1000;
