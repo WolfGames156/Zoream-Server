@@ -112,13 +112,35 @@ async function loadState() {
 function render(state) {
   const { active, games, banned, rejected, seen, names, redisInfo } = state;
 
-  // Show counts excluding banned IPs
-  const activeKeys = Object.keys(active || {}).filter(ip => !banned[ip]);
+  // Process User Activity Grouping
+  const userMap = {}; // username -> { ips: Set, firstSeen: Infinity }
+  const anonIps = []; // items with no username
 
-  document.getElementById('active-count').innerText = activeKeys.length;
+  if (seen) {
+    Object.entries(seen).forEach(([ip, info]) => {
+      if (banned && banned[ip]) return;
+
+      const userList = info.usernames ? Object.keys(info.usernames) : [];
+      if (userList.length > 0) {
+        userList.forEach(u => {
+          if (!userMap[u]) userMap[u] = { ips: new Set(), firstSeen: Infinity };
+          userMap[u].ips.add(ip);
+          if (info.firstSeen && info.firstSeen < userMap[u].firstSeen) {
+            userMap[u].firstSeen = info.firstSeen;
+          }
+        });
+      } else {
+        anonIps.push({ ip, firstSeen: info.firstSeen });
+      }
+    });
+  }
+
+  const userCount = Object.keys(userMap).length + anonIps.length;
+
+  document.getElementById('active-count').innerText = Object.keys(active || {}).filter(ip => !banned[ip]).length;
   document.getElementById('games-count').innerText = Object.keys(games).length;
   document.getElementById('banned-count').innerText = Object.keys(banned).length;
-  document.getElementById('seen-count').innerText = Object.keys(seen || {}).length;
+  document.getElementById('seen-count').innerText = userCount;
   document.getElementById('rejected-count').innerText = Object.keys(rejected || {}).length;
 
   // Redis storage - only show used storage
@@ -192,25 +214,39 @@ function render(state) {
     bannedBody.appendChild(row);
   });
 
-  // Seen IPs
-  if (seen) {
-    const seenBody = document.querySelector('#seen-table tbody');
-    if (seenBody) {
-      seenBody.innerHTML = '';
-      Object.entries(seen).forEach(([ip, info]) => {
-        if (banned && banned[ip]) return;
-        const row = document.createElement('tr');
-        const usernames = info.usernames ? Object.keys(info.usernames).join(', ') : '-';
-        const firstSeen = info.firstSeen ? new Date(info.firstSeen).toLocaleString() : '-';
-        row.innerHTML = `
-          <td>${ip}</td>
-          <td>${usernames}</td>
-          <td>${firstSeen}</td>
-          <td><button class="danger" onclick="banIp('${ip}')">Ban</button></td>
-        `;
-        seenBody.appendChild(row);
-      });
-    }
+  // User Activity (formerly Seen IPs) - Grouped
+  const seenBody = document.querySelector('#seen-table tbody');
+  if (seenBody) {
+    seenBody.innerHTML = '';
+
+    // Render Named Users first
+    Object.entries(userMap).forEach(([username, data]) => {
+      const row = document.createElement('tr');
+      const ips = Array.from(data.ips).join(', ');
+      const ipListAttr = JSON.stringify(Array.from(data.ips)).replace(/"/g, '&quot;');
+      const firstSeen = (data.firstSeen !== Infinity) ? new Date(data.firstSeen).toLocaleString() : '-';
+
+      row.innerHTML = `
+        <td>${username}</td>
+        <td>${ips}</td>
+        <td>${firstSeen}</td>
+        <td><button class="danger" onclick="banUser('${username}', ${ipListAttr})">Ban User</button></td>
+      `;
+      seenBody.appendChild(row);
+    });
+
+    // Render Anonymous IPs
+    anonIps.forEach(item => {
+      const row = document.createElement('tr');
+      const firstSeen = item.firstSeen ? new Date(item.firstSeen).toLocaleString() : '-';
+      row.innerHTML = `
+        <td>-</td>
+        <td>${item.ip}</td>
+        <td>${firstSeen}</td>
+        <td><button class="danger" onclick="banIp('${item.ip}')">Ban</button></td>
+      `;
+      seenBody.appendChild(row);
+    });
   }
 }
 
@@ -220,6 +256,16 @@ async function banIp(ip) {
     method: 'POST',
     headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },
     body: JSON.stringify({ ip })
+  });
+  loadState();
+}
+
+async function banUser(username, ips) {
+  if (!confirm(`Ban user ${username} and all associated IPs (${ips.length})?`)) return;
+  await fetch('/api/admin/ban', {
+    method: 'POST',
+    headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ips })
   });
   loadState();
 }
@@ -260,7 +306,7 @@ function showAddGameDialog() {
 }
 
 async function addGame(appId) {
-  if (!confirm(`Add game ${appId}? This will remove it from the list.`)) return;
+  if (!confirm(`Add/Update game ${appId}?`)) return;
   await fetch('/api/admin/addgame', {
     method: 'POST',
     headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },

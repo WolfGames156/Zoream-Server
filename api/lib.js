@@ -201,8 +201,35 @@ async function banIp(ip) {
   banned[ip] = true;
   await redisSet(KEY_BANNED, banned);
   const active = state.active || {};
-  delete active[ip];
-  await redisSet(KEY_ACTIVE, active);
+  if (active[ip]) {
+    delete active[ip];
+    await redisSet(KEY_ACTIVE, active);
+  }
+  return true;
+}
+
+async function banIps(ips) {
+  if (!Array.isArray(ips) || ips.length === 0) return true;
+  const state = await getState();
+  const banned = state.banned || {};
+  const active = state.active || {};
+
+  let changed = false;
+  for (const ip of ips) {
+    if (!banned[ip]) {
+      banned[ip] = true;
+      changed = true;
+    }
+    if (active[ip]) {
+      delete active[ip];
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    await redisSet(KEY_BANNED, banned);
+    await redisSet(KEY_ACTIVE, active);
+  }
   return true;
 }
 
@@ -262,19 +289,17 @@ async function removeRejected(appId) {
 }
 
 async function addGame(appId, mode = undefined) {
-  // "Add game" now means remove it from the list (similar to removeGame)
   const games = (await redisGet(KEY_GAMES)) || {};
-  delete games[appId];
+
+  // Create a new game entry with the provided mode (or default to 1)
+  games[appId] = {
+    mode: mode !== undefined ? mode : 1,
+    createdAt: nowMs()
+  };
+
   await redisSet(KEY_GAMES, games);
 
-  // Clean up game name from storage
-  const names = (await redisGet(KEY_NAMES)) || {};
-  if (names[appId]) {
-    delete names[appId];
-    await redisSet(KEY_NAMES, names);
-  }
-
-  return { removed: true };
+  return games[appId];
 }
 
 // setGameAdded is no longer needed since we removed the added field
@@ -339,6 +364,6 @@ function formatBytes(bytes) {
 }
 
 module.exports = {
-  trackVisit, cleanupExpired, getAll, banIp, unbanIp,
+  trackVisit, cleanupExpired, getAll, banIp, unbanIp, banIps,
   addRejected, removeRejected, addGame, removeGame, getAdminPass, getRedisInfo
 };

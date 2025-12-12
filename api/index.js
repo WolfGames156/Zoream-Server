@@ -1,5 +1,5 @@
 const {
-  trackVisit, cleanupExpired, getAll, banIp, unbanIp,
+  trackVisit, cleanupExpired, getAll, banIp, unbanIp, banIps,
   addRejected, removeRejected, addGame,
   removeGame, getAdminPass, getRedisInfo
 } = require("./lib.js");
@@ -206,11 +206,12 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // ---- Other admin actions ----
-    const body = req.method === "POST" ? await jsonBody(req) : {};
-
     if (req.url.startsWith("/api/admin/ban")) {
-      await banIp(body.ip);
+      if (body.ips && Array.isArray(body.ips)) {
+        await banIps(body.ips);
+      } else {
+        await banIp(body.ip);
+      }
       if (global._adminStateCache) global._adminStateCache = { ts: 0, data: null };
       return res.json({ ok: true });
     }
