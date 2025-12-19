@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" href="https://zoream.pages.dev/zoreamlogo.png" type="image/png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zoream Admin</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <div id="login-overlay">
+    <div class="login-box">
+      <h1>Zoream Admin</h1>
+      <p style="color: #94a3b8; margin-bottom: 2rem;">Secure Access Required</p>
+      <input type="password" id="admin-pass" placeholder="Enter Admin Password">
+      <button onclick="attemptLogin()">Login</button>
+      <p id="login-error" style="color: var(--danger-color); margin-top: 1rem; display: none;">Invalid Password</p>
+    </div>
+  </div>
+
+  <div class="container hidden" id="dashboard">
+    <header>
+      <h1>Zoream Dashboard</h1>
+      <button onclick="logout()" class="danger">Logout</button>
+    </header>
+
+    <div class="stats-grid">
+      <div class="card stat-item">
+        <span class="stat-label">Active Users</span>
+        <span class="stat-value" id="active-count">0</span>
+      </div>
+      <div class="card stat-item">
+        <span class="stat-label">User Count</span>
+        <span class="stat-value" id="seen-count">0</span>
+      </div>
+      <div class="card stat-item">
+        <span class="stat-label">Seen IPs</span>
+        <span class="stat-value" id="seen-ips-count">0</span>
+      </div>
+      <div class="card stat-item">
+        <span class="stat-label">Total Games</span>
+        <span class="stat-value" id="games-count">0</span>
+      </div>
+      <div class="card stat-item">
+        <span class="stat-label">Rejected Games</span>
+        <span class="stat-value" id="rejected-count">0</span>
+      </div>
+      <div class="card stat-item">
+        <span class="stat-label">Banned IPs</span>
+        <span class="stat-value" id="banned-count">0</span>
+      </div>
+      <div class="card stat-item" id="redis-usage-card" style="display: none;">
+        <span class="stat-label">Server Storage Usage</span>
+        <span class="stat-value" id="redis-usage" style="font-size: 1.8rem;">-</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header" onclick="toggleSection('active-users')">
+        <h2>Active Users</h2>
+        <span class="toggle-arrow" id="toggle-active-users">▼</span>
+      </div>
+      <div class="collapsible-content" id="content-active-users">
+        <div class="table-container">
+          <table id="users-table">
+            <thead>
+              <tr>
+                <th>IP Address</th>
+                <th>Discord User</th>
+                <th>Last Seen</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header" onclick="toggleSection('game-library')">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex: 1;">
+          <h2 style="margin: 0;">Games Library</h2>
+          <button onclick="event.stopPropagation(); showAddGameDialog()">Add Game</button>
+        </div>
+        <span class="toggle-arrow" id="toggle-game-library">▼</span>
+      </div>
+      <div class="collapsible-content" id="content-game-library">
+        <div class="table-container">
+          <table id="games-table">
+            <thead>
+              <tr>
+                <th>App ID</th>
+                <th>Mode</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header" onclick="toggleSection('rejected-games')">
+        <h2>Rejected Games</h2>
+        <span class="toggle-arrow" id="toggle-rejected-games">▼</span>
+      </div>
+      <div class="collapsible-content" id="content-rejected-games">
+        <div class="table-container">
+          <table id="rejected-table">
+            <thead>
+              <tr>
+                <th>App ID</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header" onclick="toggleSection('seen-ips')">
+        <h2>User Activity</h2>
+        <span class="toggle-arrow" id="toggle-seen-ips">▼</span>
+      </div>
+      <div class="collapsible-content" id="content-seen-ips">
+        <div class="table-container">
+          <table id="seen-table">
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Status</th>
+                <th>IP Addresses</th>
+                <th>Last Seen</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header" onclick="toggleSection('banned-ips')">
+        <h2>Banned IPs</h2>
+        <span class="toggle-arrow" id="toggle-banned-ips">▼</span>
+      </div>
+      <div class="collapsible-content" id="content-banned-ips">
+        <div class="table-container">
+          <table id="banned-table">
+            <thead>
+              <tr>
+                <th>IP Address</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+
+</html>
