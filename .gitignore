@@ -15,6 +15,7 @@ dist/
 .vercel
 .agent/
 
-# OS files
+# OS filess
 .DS_Store
 Thumbs.db
+
