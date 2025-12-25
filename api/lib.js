@@ -81,7 +81,7 @@ async function fetchMissingNames(missing) {
 }
 
 // --- Helper: Get Active Threshold ---
-const ACTIVE_THRESHOLD_SEC = 300; // 5 minutes
+const ACTIVE_THRESHOLD_SEC = 3600; // 1 hour
 
 async function getState() {
   const db = await getDb();
@@ -177,7 +177,7 @@ async function isIpBanned(ip) {
 const _writeThrottle = new Map();
 const WRITE_THROTTLE_MS = 60000; // 1 minute
 
-async function trackVisit(ip, clientId, username) {
+async function trackVisit(ip, clientId, username, status) {
   if (!ip) throw new Error("no ip");
   const db = await getDb();
   if (!db) return {};
@@ -195,27 +195,32 @@ async function trackVisit(ip, clientId, username) {
   }
 
   if (shouldWrite) {
-    _writeThrottle.set(ip, now);
+    if (status === 'offline') {
+      // User is going offline explicitly
+      await db.collection('seen_users').deleteOne({ ip });
+    } else {
+      _writeThrottle.set(ip, now);
 
-    const seenOps = {
-      $setOnInsert: { firstSeen: now, ip: ip },
-      $set: { lastSeen: now }
-    };
+      const seenOps = {
+        $setOnInsert: { firstSeen: now, ip: ip },
+        $set: { lastSeen: now }
+      };
 
-    const seenUpdate = {};
-    if (username) {
-      seenUpdate[`usernames.${username}`] = true;
+      const seenUpdate = {};
+      if (username) {
+        seenUpdate[`usernames.${username}`] = true;
+      }
+
+      if (Object.keys(seenUpdate).length > 0) {
+        Object.assign(seenOps.$set, seenUpdate);
+      }
+
+      await db.collection('seen_users').updateOne(
+        { ip },
+        seenOps,
+        { upsert: true }
+      );
     }
-
-    if (Object.keys(seenUpdate).length > 0) {
-      Object.assign(seenOps.$set, seenUpdate);
-    }
-
-    await db.collection('seen_users').updateOne(
-      { ip },
-      seenOps,
-      { upsert: true }
-    );
   }
 
   // Count active users (Query seen_users based on time)
