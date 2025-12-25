@@ -190,7 +190,8 @@ async function trackVisit(ip, clientId, username, status) {
   // Throttle Writes
   let shouldWrite = true;
   const lastWrite = _writeThrottle.get(ip);
-  if (lastWrite && (now - lastWrite < WRITE_THROTTLE_MS)) {
+  // Force write if going offline, otherwise check throttle
+  if (status !== 'offline' && lastWrite && (now - lastWrite < WRITE_THROTTLE_MS)) {
     shouldWrite = false;
   }
 
@@ -198,6 +199,8 @@ async function trackVisit(ip, clientId, username, status) {
     if (status === 'offline') {
       // User is going offline explicitly
       await db.collection('seen_users').deleteOne({ ip });
+      // Clear throttle so next login writes immediately
+      _writeThrottle.delete(ip);
     } else {
       _writeThrottle.set(ip, now);
 
