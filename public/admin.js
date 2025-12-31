@@ -197,9 +197,9 @@ function render(state) {
     }
 
     row.innerHTML = `
-      <td>${ip}</td>
-      <td>${serialDisplay}</td>
       <td>${usernameDisplay}</td>
+      <td>${serialDisplay}</td>
+      <td>${ip}</td>
       <td>${lastSeen}</td>
       <td>
         <button class="danger" onclick="${banAction}">Ban</button>
@@ -241,15 +241,36 @@ function render(state) {
     rejectedBody.appendChild(row);
   });
 
-  // Banned IPs
+  // Banned Users (formerly Banned IPs)
   const bannedBody = document.querySelector('#banned-table tbody');
   bannedBody.innerHTML = '';
-  Object.keys(banned).forEach(ip => {
+
+  // Sort banned list by serial or IP
+  const bannedList = Object.values(banned).sort((a, b) => {
+    if (a.serial && b.serial) return a.serial.localeCompare(b.serial);
+    return a.ip.localeCompare(b.ip);
+  });
+
+  bannedList.forEach(entry => {
     const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${ip}</td>
-      <td><button onclick="unbanIp('${ip}')">Unban</button></td>
-    `;
+
+    // Allow entry to be boolean true (backwards compatibility) or object
+    const ip = entry.ip || entry; // if entry is just string/true, handle it (though now it's object)
+    // If simple boolean/string due to old cache/state
+    if (entry === true) {
+      // Fallback for old state
+      row.innerHTML = `<td>${entry}</td><td>-</td><td>-</td><td><button onclick="unbanIp('${entry}')">Unban</button></td>`;
+    } else {
+      const serialDisplay = entry.serial || '-';
+      const usernameDisplay = entry.usernames && entry.usernames.length > 0 ? entry.usernames.join(', ') : '-';
+
+      row.innerHTML = `
+          <td>${usernameDisplay}</td>
+          <td>${serialDisplay}</td>
+          <td>${ip}</td>
+          <td><button onclick="unbanIp('${ip}')">Unban</button></td>
+        `;
+    }
     bannedBody.appendChild(row);
   });
 
@@ -274,8 +295,8 @@ function render(state) {
       row.innerHTML = `
         <td>${username}</td>
         <td>${serialDisplay}</td>
-        <td>${statusBadge}</td>
         <td>${ips}</td>
+        <td>${statusBadge}</td>
         <td>${lastSeenStr}</td>
         <td><button class="danger" onclick="banUser('${username}', ${ipListAttr})">Ban User</button></td>
       `;
@@ -296,8 +317,8 @@ function render(state) {
       row.innerHTML = `
         <td>-</td>
         <td>${serialDisplay}</td>
-        <td>${statusBadge}</td>
         <td>${item.ip}</td>
+        <td>${statusBadge}</td>
         <td>${lastSeenStr}</td>
         <td><button class="danger" onclick="banIp('${item.ip}')">Ban</button></td>
       `;
