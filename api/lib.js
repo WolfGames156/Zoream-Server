@@ -122,8 +122,17 @@ async function getState() {
   });
 
   const banned = {};
+  // Create a map of active/seen users for quick lookup of details
+  const seenMap = new Map();
+  seenList.forEach(d => seenMap.set(d.ip, d));
+
   bannedList.forEach(d => {
-    banned[d.ip] = true;
+    const seenInfo = seenMap.get(d.ip);
+    banned[d.ip] = {
+      ip: d.ip,
+      serial: seenInfo?.serial || null,
+      usernames: seenInfo?.usernames ? Object.keys(seenInfo.usernames) : []
+    };
   });
 
   const bannedSerials = {};

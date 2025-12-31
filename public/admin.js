@@ -246,9 +246,19 @@ function render(state) {
   bannedBody.innerHTML = '';
 
   // Sort banned list by serial or IP
+  // Sort banned list by serial or IP
   const bannedList = Object.values(banned).sort((a, b) => {
-    if (a.serial && b.serial) return a.serial.localeCompare(b.serial);
-    return a.ip.localeCompare(b.ip);
+    const aSerial = (typeof a === 'object' && a.serial) ? a.serial : '';
+    const bSerial = (typeof b === 'object' && b.serial) ? b.serial : '';
+    // Sort by serial if available
+    if (aSerial && bSerial) return aSerial.localeCompare(bSerial);
+    if (aSerial) return -1;
+    if (bSerial) return 1;
+
+    // Fallback to IP sorting
+    const aIp = (typeof a === 'object' && a.ip) ? a.ip : String(a);
+    const bIp = (typeof b === 'object' && b.ip) ? b.ip : String(b);
+    return aIp.localeCompare(bIp);
   });
 
   bannedList.forEach(entry => {
