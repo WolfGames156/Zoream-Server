@@ -241,48 +241,72 @@ function render(state) {
     rejectedBody.appendChild(row);
   });
 
-  // Banned Users (formerly Banned IPs)
+  // Banned Users - Grouped
   const bannedBody = document.querySelector('#banned-table tbody');
   bannedBody.innerHTML = '';
 
-  // Sort banned list by serial or IP
-  // Sort banned list by serial or IP
-  const bannedList = Object.values(banned).sort((a, b) => {
+  const bannedUserMap = {};
+  const bannedAnonIps = [];
+
+  // Sort and process banned list
+  const bannedListFull = Object.values(banned).sort((a, b) => {
     const aSerial = (typeof a === 'object' && a.serial) ? a.serial : '';
     const bSerial = (typeof b === 'object' && b.serial) ? b.serial : '';
-    // Sort by serial if available
     if (aSerial && bSerial) return aSerial.localeCompare(bSerial);
-    if (aSerial) return -1;
-    if (bSerial) return 1;
-
-    // Fallback to IP sorting
-    const aIp = (typeof a === 'object' && a.ip) ? a.ip : String(a);
-    const bIp = (typeof b === 'object' && b.ip) ? b.ip : String(b);
-    return aIp.localeCompare(bIp);
+    return 0;
   });
 
-  bannedList.forEach(entry => {
-    const row = document.createElement('tr');
-
-    // Allow entry to be boolean true (backwards compatibility) or object
-    const ip = entry.ip || entry; // if entry is just string/true, handle it (though now it's object)
-    // If simple boolean/string due to old cache/state
-    if (entry === true) {
-      // Fallback for old state
-      row.innerHTML = `<td>${entry}</td><td>-</td><td>-</td><td><button onclick="unbanIp('${entry}')">Unban</button></td>`;
-    } else {
-      const serialDisplay = entry.serial || '-';
-      const usernameDisplay = entry.usernames && entry.usernames.length > 0 ? entry.usernames.join(', ') : '-';
-
-      row.innerHTML = `
-          <td>${usernameDisplay}</td>
-          <td>${serialDisplay}</td>
-          <td>${ip}</td>
-          <td><button onclick="unbanIp('${ip}')">Unban</button></td>
-        `;
+  bannedListFull.forEach(entry => {
+    // Handle legacy format
+    if (typeof entry !== 'object') {
+      bannedAnonIps.push({ ip: entry, serial: null, usernames: [] });
+      return;
     }
+
+    const { ip, serial, usernames } = entry;
+    // Prefer username grouping
+    if (usernames && usernames.length > 0) {
+      usernames.forEach(u => {
+        if (!bannedUserMap[u]) bannedUserMap[u] = { ips: new Set(), serial: null };
+        bannedUserMap[u].ips.add(ip);
+        if (serial) bannedUserMap[u].serial = serial;
+      });
+    } else {
+      bannedAnonIps.push(entry);
+    }
+  });
+
+  // Render Grouped Banned Users
+  Object.entries(bannedUserMap).forEach(([username, data]) => {
+    const row = document.createElement('tr');
+    const ips = Array.from(data.ips).join(', ');
+    const ipListAttr = JSON.stringify(Array.from(data.ips)).replace(/"/g, '&quot;');
+    const serialDisplay = data.serial || '-';
+
+    row.innerHTML = `
+      <td>${username}</td>
+      <td>${serialDisplay}</td>
+      <td>${ips}</td>
+      <td><button onclick="unbanUser('${username}', ${ipListAttr})">Unban</button></td>
+    `;
     bannedBody.appendChild(row);
   });
+
+  // Render Anonymous Banned IPs
+  bannedAnonIps.forEach(entry => {
+    const row = document.createElement('tr');
+    const ip = entry.ip || entry;
+    const serialDisplay = entry.serial || '-';
+
+    row.innerHTML = `
+      <td>-</td>
+      <td>${serialDisplay}</td>
+      <td>${ip}</td>
+      <td><button onclick="unbanIp('${ip}')">Unban</button></td>
+    `;
+    bannedBody.appendChild(row);
+  });
+
 
   // User Activity (formerly Seen IPs) - Grouped
   const seenBody = document.querySelector('#seen-table tbody');
@@ -358,11 +382,25 @@ async function banUser(username, ips) {
 }
 
 async function unbanIp(ip) {
+  if (!confirm(`Unban IP ${ip}?`)) return;
   await fetch('/api/admin/unban', {
     method: 'POST',
     headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },
     body: JSON.stringify({ ip })
   });
+  loadState();
+}
+
+async function unbanUser(username, ips) {
+  if (!confirm(`Unban user ${username} and all associated IPs (${ips.length})?`)) return;
+  // Unban all IPs associated with the user
+  for (const ip of ips) {
+    await fetch('/api/admin/unban', {
+      method: 'POST',
+      headers: { 'x-admin-pass': adminPass, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip })
+    });
+  }
   loadState();
 }
 
