@@ -116,7 +116,7 @@ function render(state) {
   const storageInfo = dbInfo || redisInfo;
 
   // Process User Activity Grouping
-  const userMap = {}; // username -> { ips: Set, lastSeen: -1 }
+  const userMap = {}; // username -> { ips: Set, lastSeen: -1, serial: null }
   const anonIps = []; // items with no username
 
   if (seen) {
@@ -126,17 +126,19 @@ function render(state) {
       const userList = info.usernames ? Object.keys(info.usernames) : [];
       // Use lastSeen if available, fallback to firstSeen, then 0
       const seenTime = info.lastSeen || info.firstSeen || 0;
+      const serial = info.serial || null;
 
       if (userList.length > 0) {
         userList.forEach(u => {
-          if (!userMap[u]) userMap[u] = { ips: new Set(), lastSeen: -1 };
+          if (!userMap[u]) userMap[u] = { ips: new Set(), lastSeen: -1, serial: null };
           userMap[u].ips.add(ip);
           if (seenTime > userMap[u].lastSeen) {
             userMap[u].lastSeen = seenTime;
           }
+          if (serial) userMap[u].serial = serial;
         });
       } else {
-        anonIps.push({ ip, lastSeen: seenTime });
+        anonIps.push({ ip, lastSeen: seenTime, serial });
       }
     });
   }
@@ -175,6 +177,8 @@ function render(state) {
       usernames.push(data.lastUsername);
     }
     const usernameDisplay = usernames.length > 0 ? usernames.join(', ') : '-';
+    // Serial Number Display
+    const serialDisplay = data.serial || '-';
 
     // Gather all linked IPs for these usernames from the global userMap
     let linkedIps = new Set([ip]);
@@ -194,6 +198,7 @@ function render(state) {
 
     row.innerHTML = `
       <td>${ip}</td>
+      <td>${serialDisplay}</td>
       <td>${usernameDisplay}</td>
       <td>${lastSeen}</td>
       <td>
@@ -259,6 +264,7 @@ function render(state) {
       const ips = Array.from(data.ips).join(', ');
       const ipListAttr = JSON.stringify(Array.from(data.ips)).replace(/"/g, '&quot;');
       const lastSeenStr = (data.lastSeen > 0) ? new Date(data.lastSeen).toLocaleString() : '-';
+      const serialDisplay = data.serial || '-';
 
       const isOnline = Array.from(data.ips).some(ip => active && active[ip]);
       const statusBadge = isOnline
@@ -267,6 +273,7 @@ function render(state) {
 
       row.innerHTML = `
         <td>${username}</td>
+        <td>${serialDisplay}</td>
         <td>${statusBadge}</td>
         <td>${ips}</td>
         <td>${lastSeenStr}</td>
@@ -279,6 +286,7 @@ function render(state) {
     anonIps.sort((a, b) => b.lastSeen - a.lastSeen).forEach(item => {
       const row = document.createElement('tr');
       const lastSeenStr = item.lastSeen > 0 ? new Date(item.lastSeen).toLocaleString() : '-';
+      const serialDisplay = item.serial || '-';
 
       const isOnline = active && active[item.ip];
       const statusBadge = isOnline
@@ -287,6 +295,7 @@ function render(state) {
 
       row.innerHTML = `
         <td>-</td>
+        <td>${serialDisplay}</td>
         <td>${statusBadge}</td>
         <td>${item.ip}</td>
         <td>${lastSeenStr}</td>
