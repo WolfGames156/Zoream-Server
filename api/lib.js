@@ -91,12 +91,12 @@ async function getState() {
   const activeCutoff = now - (ACTIVE_THRESHOLD_SEC * 1000);
 
   // Use Promise.all for concurrency
-  // We fetch 'active' users by querying seen_users for recent activity
-  const [activeList, gamesList, rejectedList, bannedList, seenList, namesList] = await Promise.all([
+  const [activeList, gamesList, rejectedList, bannedList, bannedSerialsList, seenList, namesList] = await Promise.all([
     db.collection('seen_users').find({ lastSeen: { $gt: activeCutoff } }).toArray(),
     db.collection('games').find({}).toArray(),
     db.collection('rejected').find({}).toArray(),
     db.collection('banned_ips').find({}).toArray(),
+    db.collection('banned_serials').find({}).toArray(),
     db.collection('seen_users').find({}).toArray(),
     db.collection('names').find({}).toArray()
   ]);
@@ -126,6 +126,11 @@ async function getState() {
     banned[d.ip] = true;
   });
 
+  const bannedSerials = {};
+  bannedSerialsList.forEach(d => {
+    bannedSerials[d.serial] = true;
+  });
+
   const seen = {};
   seenList.forEach(d => {
     const { _id, ip, ...rest } = d;
@@ -147,17 +152,16 @@ async function getState() {
     fetchMissingNames(missing).catch(e => console.error("Bg fetch error:", e));
   }
 
-  return { active, games, rejected, banned, seen, names };
+  return { active, games, rejected, banned, bannedSerials, seen, names };
 }
 
 async function cleanupExpired(thresholdSec = 300) {
-  // No-op now. We don't delete from active_ips anymore because we don't use it.
-  // History is preserved in seen_users.
   return [];
 }
 
 // --- In-Memory Caches for Optimization ---
 let _bannedCache = null;
+let _bannedSerialCache = null;
 let _bannedCacheTime = 0;
 const BANNED_CACHE_TTL = 30000; // 30 sec
 
@@ -168,21 +172,35 @@ async function isIpBanned(ip) {
     if (!db) return false;
     const list = await db.collection('banned_ips').find({}).project({ ip: 1 }).toArray();
     _bannedCache = new Set(list.map(d => d.ip));
+
+    // Refresh serial cache too
+    const serialList = await db.collection('banned_serials').find({}).project({ serial: 1 }).toArray();
+    _bannedSerialCache = new Set(serialList.map(d => d.serial));
+
     _bannedCacheTime = now;
   }
   return _bannedCache.has(ip);
+}
+
+async function isSerialBanned(serial) {
+  const now = nowMs();
+  if (!_bannedSerialCache || (now - _bannedCacheTime > BANNED_CACHE_TTL)) {
+    await isIpBanned('0.0.0.0'); // Triggers refresh
+  }
+  return serial && _bannedSerialCache && _bannedSerialCache.has(serial);
 }
 
 // Write throttling: { ip: lastWriteTime }
 const _writeThrottle = new Map();
 const WRITE_THROTTLE_MS = 60000; // 1 minute
 
-async function trackVisit(ip, clientId, username, status) {
+async function trackVisit(ip, clientId, username, status, serial) {
   if (!ip) throw new Error("no ip");
   const db = await getDb();
   if (!db) return {};
 
   if (await isIpBanned(ip)) return { banned: true };
+  if (serial && await isSerialBanned(serial)) return { banned: true };
 
   const now = nowMs();
   const activeCutoff = now - (ACTIVE_THRESHOLD_SEC * 1000);
@@ -213,6 +231,9 @@ async function trackVisit(ip, clientId, username, status) {
       if (username) {
         seenUpdate[`usernames.${username}`] = true;
       }
+      if (serial) {
+        seenUpdate.serial = serial;
+      }
 
       if (Object.keys(seenUpdate).length > 0) {
         Object.assign(seenOps.$set, seenUpdate);
@@ -227,7 +248,6 @@ async function trackVisit(ip, clientId, username, status) {
   }
 
   // Count active users (Query seen_users based on time)
-  // This replaces the separate 'active_ips' collection count
   const activeCount = await db.collection('seen_users').countDocuments({
     lastSeen: { $gt: activeCutoff }
   });
@@ -239,23 +259,55 @@ async function trackVisit(ip, clientId, username, status) {
   };
 }
 
+async function banSerial(serial) {
+  if (!serial) return false;
+  const db = await getDb();
+  if (!db) return false;
+  await db.collection('banned_serials').updateOne({ serial }, { $set: { serial } }, { upsert: true });
+  _bannedSerialCache = null;
+  return true;
+}
+
+async function unbanSerial(serial) {
+  if (!serial) return false;
+  const db = await getDb();
+  if (!db) return false;
+  await db.collection('banned_serials').deleteOne({ serial });
+  _bannedSerialCache = null;
+  return true;
+}
+
 async function banIp(ip) {
   const db = await getDb();
   if (!db) return;
+
   await db.collection('banned_ips').updateOne({ ip }, { $set: { ip: ip } }, { upsert: true });
-  // No need to delete from active_ips, it's just a query view now
+
+  // Propagate to serial and other IPs
+  const userNode = await db.collection('seen_users').findOne({ ip });
+  if (userNode && userNode.serial) {
+    const serial = userNode.serial;
+    await banSerial(serial);
+
+    // Find all related IPs (same serial)
+    const relatedDocs = await db.collection('seen_users').find({ serial }).toArray();
+    const relatedIps = relatedDocs.map(d => d.ip).filter(i => i !== ip);
+
+    if (relatedIps.length > 0) {
+      const ops = relatedIps.map(rip => ({ updateOne: { filter: { ip: rip }, update: { $set: { ip: rip } }, upsert: true } }));
+      await db.collection('banned_ips').bulkWrite(ops);
+    }
+  }
+
   _bannedCache = null;
   return true;
 }
 
 async function banIps(ips) {
   if (!Array.isArray(ips) || ips.length === 0) return true;
-  const db = await getDb();
-  if (!db) return;
-
-  const ops = ips.map(ip => ({ updateOne: { filter: { ip }, update: { $set: { ip } }, upsert: true } }));
-  if (ops.length > 0) await db.collection('banned_ips').bulkWrite(ops);
-  _bannedCache = null;
+  for (const ip of ips) {
+    await banIp(ip);
+  }
   return true;
 }
 
@@ -263,6 +315,21 @@ async function unbanIp(ip) {
   const db = await getDb();
   if (!db) return;
   await db.collection('banned_ips').deleteOne({ ip });
+
+  // Clean up serial bans if this IP was the trigger/key
+  const userNode = await db.collection('seen_users').findOne({ ip });
+  if (userNode && userNode.serial) {
+    const serial = userNode.serial;
+    await unbanSerial(serial);
+
+    const relatedDocs = await db.collection('seen_users').find({ serial }).toArray();
+    const relatedIps = relatedDocs.map(d => d.ip).filter(i => i !== ip);
+
+    if (relatedIps.length > 0) {
+      await db.collection('banned_ips').deleteMany({ ip: { $in: relatedIps } });
+    }
+  }
+
   _bannedCache = null;
   return true;
 }
@@ -282,19 +349,7 @@ async function addRejected(appId) {
     await db.collection('games').deleteMany(q);
   }
 
-  // updateOne with $in is tricky for upsert if it inserts (what value does it use?)
-  // Better to explicit check existence or just delete old versions and insert new clean one.
-  // But we want to preserve other fields if they exist in 'rejected'? 
-  // The code originally did updateOne.
-  // Let's stick to updateOne but target the normalized String ID if possible, 
-  // or use deleteMany(q) on rejected too before inserting?
-  // The original code was: updateOne({ appId }, { $set: dataToSave }, { upsert: true });
-  // If we want to simple 'Add to rejected', we should probably force clean state.
-
-  // Clean up any existing rejected entries with mixed types
   await db.collection('rejected').deleteMany(q);
-
-  // Insert the new correct one
   await db.collection('rejected').insertOne(dataToSave);
 
   await db.collection('names').deleteMany(q);

@@ -15,9 +15,10 @@ module.exports = async function handler(req, res) {
         const body = req.method === "POST" ? await jsonBody(req) : {};
         const clientId = body.clientId || req.headers["x-client-id"] || null;
         const username = body.username || body.discord || body.name || null;
+        const serial = body.serial || body.hwid || null;
 
         const status = body.status || null;
-        const result = await trackVisit(ip, clientId, username, status);
+        const result = await trackVisit(ip, clientId, username, status, serial);
 
         const url = new URL(req.url, `http://${req.headers.host}`);
         const passForTrack = body.admin_pass || req.headers["x-admin-pass"] || url.searchParams.get("admin_pass") || "";
