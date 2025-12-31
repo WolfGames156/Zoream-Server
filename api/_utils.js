@@ -58,6 +58,12 @@ function getIp(req) {
     return normalizeIp(ip);
 }
 
+function updateUI() {
+    if (global._adminStateCache) {
+        global._adminStateCache = { ts: 0, data: null };
+    }
+}
+
 module.exports = {
     normalizeIp,
     jsonBody,
@@ -65,5 +71,6 @@ module.exports = {
     verifyAdmin,
     runCleanup,
     sendJson,
-    getIp
+    getIp,
+    updateUI
 };

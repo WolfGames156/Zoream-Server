@@ -1,5 +1,5 @@
 const { addRejected } = require("../lib.js");
-const { verifyAdmin, setCorsHeaders, jsonBody, sendJson, runCleanup } = require("../_utils.js");
+const { verifyAdmin, setCorsHeaders, jsonBody, sendJson, runCleanup, updateUI } = require("../_utils.js");
 
 module.exports = async function handler(req, res) {
     setCorsHeaders(res);
@@ -15,7 +15,7 @@ module.exports = async function handler(req, res) {
         const body = await jsonBody(req);
         // addRejected will preserve existing game metadata (mode) before removing it
         await addRejected(body.appId);
-        if (global._adminStateCache) global._adminStateCache = { ts: 0, data: null };
+        updateUI();
         return sendJson(res, { ok: true });
     } catch (e) {
         return sendJson(res, { ok: false, error: e.message }, 500);
